@@ -1,5 +1,12 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, RADII, SEMANTIC, MACRO_COLORS } from '../../src/constants/theme';
@@ -8,6 +15,7 @@ import MacroBar from '../../src/components/MacroBar';
 import StatCard from '../../src/components/StatCard';
 import SectionLabel from '../../src/components/SectionLabel';
 import { hoy, macros } from '../../src/data/appData';
+import { useWatch } from '../../src/hooks/useWatch';
 
 const WEEK_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const WEEK_SESSIONS = ['T.A', 'P.A', 'Lig', '—', 'T.B', 'P.B', '—'];
@@ -18,8 +26,19 @@ export default function HoyScreen() {
   const log = macros.logHoy;
   const target = macros.entrenoDia;
 
+  const { data, loading, lastSyncAt, sync } = useWatch();
+
   const waterPct = Math.round((hoy.water.ml / hoy.water.target) * 100);
-  const stepsPct = Math.round((hoy.steps.count / hoy.steps.target) * 100);
+
+  // Watch-derived values with "--" fallback when null
+  const stepsValue = data?.pasos != null ? data.pasos.toLocaleString() : '--';
+  const fcValue = data?.fc_reposo_ppm != null ? data.fc_reposo_ppm.toString() : '--';
+  const hrvSub = data?.hrv != null ? `HRV: ${data.hrv} ms` : 'HRV: --';
+  const sleepValue = data?.horas_sueno != null ? data.horas_sueno.toFixed(1) : '--';
+
+  const syncLabel = lastSyncAt
+    ? `Última sync: ${lastSyncAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+    : 'Sin datos';
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={['top']}>
@@ -97,19 +116,42 @@ export default function HoyScreen() {
         </View>
 
         <SectionLabel>Resumen del día</SectionLabel>
-        <View style={[styles.statGrid, { paddingHorizontal: 20, marginBottom: 14 }]}>
+        <View style={[styles.statGrid, { paddingHorizontal: 20, marginBottom: 8 }]}>
           <View style={styles.statItem}>
             <StatCard icon="water" label="Agua" value={`${(hoy.water.ml / 1000).toFixed(1)}`} unit="L" sub={`Meta: ${(hoy.water.target / 1000).toFixed(1)} L · ${waterPct}%`} />
           </View>
           <View style={styles.statItem}>
-            <StatCard icon="run" label="Pasos" value={hoy.steps.count.toLocaleString()} sub={`Meta: ${hoy.steps.target.toLocaleString()} · ${stepsPct}%`} />
+            <StatCard icon="run" label="Pasos" value={stepsValue} sub="Samsung Health" />
           </View>
           <View style={styles.statItem}>
-            <StatCard icon="heart" label="FC reposo" value={hoy.recovery.fcReposo} unit="ppm" sub={`HRV: ${hoy.recovery.hrv} ms`} />
+            <StatCard icon="heart" label="FC reposo" value={fcValue} unit={data?.fc_reposo_ppm != null ? 'ppm' : ''} sub={hrvSub} />
           </View>
           <View style={styles.statItem}>
-            <StatCard icon="sleep" label="Sueño" value={hoy.recovery.suenoH} unit="h" sub="Ayer noche" />
+            <StatCard icon="sleep" label="Sueño" value={sleepValue} unit={data?.horas_sueno != null ? 'h' : ''} sub="Ayer noche" />
           </View>
+        </View>
+
+        {/* Watch sync controls */}
+        <View style={[styles.syncRow, { paddingHorizontal: 20, marginBottom: 14 }]}>
+          <Text style={[styles.syncLabel, { color: theme.text3 }]}>{syncLabel}</Text>
+          <TouchableOpacity
+            onPress={sync}
+            disabled={loading}
+            style={[
+              styles.syncBtn,
+              {
+                backgroundColor: loading ? theme.bg3 : theme.bg2,
+                borderColor: theme.border,
+              },
+            ]}
+            accessibilityLabel="Sincronizar datos del reloj"
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color={theme.accent} />
+            ) : (
+              <Text style={[styles.syncBtnText, { color: theme.accent }]}>Sync reloj</Text>
+            )}
+          </TouchableOpacity>
         </View>
 
         <View style={[styles.card, { backgroundColor: theme.bg2, borderColor: theme.border, borderRadius: RADII.r2, marginHorizontal: 20, marginBottom: 14, padding: 14 }]}>
@@ -166,6 +208,19 @@ const styles = StyleSheet.create({
   macroFooter: { fontSize: 12, textAlign: 'center' },
   statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   statItem: { width: '47%', flexGrow: 1 },
+  syncRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 0 },
+  syncLabel: { fontSize: 12 },
+  syncBtn: {
+    minWidth: 48,
+    minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syncBtnText: { fontSize: 13, fontWeight: '600' },
   pesoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   pesoLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
   pesoValueRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },

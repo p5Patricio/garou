@@ -12,8 +12,6 @@ export const hoy = {
   sesion: 'PIERNA A',
   diasSemana: ['Torso A', 'Pierna A', 'Día Ligero', 'Descanso', 'Torso B', 'Pierna B', 'Descanso'],
   water: { ml: 1800, target: 3200 },
-  steps: { count: 6847, target: 8000 },
-  recovery: { fcReposo: 52, suenoH: 7.4, hrv: 48 },
   pesoHoy: null as number | null,
   pesoUltimo: { val: 78.5, dias: 2, tendencia: -0.3 },
 };
