@@ -32,7 +32,8 @@ export const SCHEMA_SQL = `
     rir_real INTEGER,
     completada INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (session_id) REFERENCES workout_sessions(id),
-    FOREIGN KEY (exercise_id) REFERENCES exercises(id)
+    FOREIGN KEY (exercise_id) REFERENCES exercises(id),
+    UNIQUE(session_id, exercise_id, num_serie)
   );
 
   CREATE TABLE IF NOT EXISTS foods (

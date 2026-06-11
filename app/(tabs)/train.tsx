@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Modal,
+  Alert,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, RADII, SEMANTIC } from '../../src/constants/theme';
 import Stepper from '../../src/components/Stepper';
@@ -7,29 +16,12 @@ import RirSelector from '../../src/components/RirSelector';
 import RestTimerBar from '../../src/components/RestTimerBar';
 import BtnPrimary from '../../src/components/BtnPrimary';
 import Icon from '../../src/components/Icon';
-import { piernaA, type Exercise } from '../../src/data/appData';
+import { useWorkout } from '../../src/hooks/useWorkout';
+import ExerciseHistoryScreen from '../../src/screens/ExerciseHistoryScreen';
 
-interface SetState {
-  weight: number;
-  reps: number;
-  rir: number;
-  done: boolean;
-}
-
-type SetsMap = Record<number, Record<number, SetState>>;
-
-function buildInitialSets(exercises: Exercise[]): SetsMap {
-  const sets: SetsMap = {};
-  exercises.forEach((ex) => {
-    sets[ex.id] = {};
-    for (let i = 0; i < ex.series; i++) {
-      sets[ex.id][i] = { weight: ex.ultimoPeso, reps: ex.ultimoReps, rir: ex.rir[0], done: false };
-    }
-  });
-  sets[1][0] = { weight: 82.5, reps: 6, rir: 2, done: true };
-  sets[1][1] = { weight: 82.5, reps: 7, rir: 2, done: true };
-  return sets;
-}
+// ---------------------------------------------------------------------------
+// Local types (UI-only, not persisted)
+// ---------------------------------------------------------------------------
 
 interface Expanded {
   exId: number;
@@ -43,20 +35,44 @@ interface RestTimer {
   nombre: string;
 }
 
+interface HistoryModal {
+  exerciseId: number;
+  exerciseName: string;
+}
+
+// ---------------------------------------------------------------------------
+// Screen
+// ---------------------------------------------------------------------------
+
 export default function TrainScreen() {
   const { theme } = useTheme();
-  const exercises = piernaA;
 
-  const [sets, setSets] = useState<SetsMap>(() => buildInitialSets(exercises));
-  const [expanded, setExpanded] = useState<Expanded | null>({ exId: 1, setIdx: 2 });
-  const [restTimer, setRestTimer] = useState<RestTimer>({ active: true, remaining: 127, total: 180, nombre: 'Sentadilla' });
-  const [elapsed, setElapsed] = useState(43 * 60 + 17);
+  // --- Data layer ---------------------------------------------------------
+  const {
+    loading,
+    exercises,
+    sets,
+    progressionByExercise,
+    sessionComplete,
+    completeSet,
+    updateSet,
+    finishSession,
+    tipoSesion,
+  } = useWorkout();
 
+  // --- Ephemeral UI state -------------------------------------------------
+  const [expanded, setExpanded] = useState<Expanded | null>(null);
+  const [restTimer, setRestTimer] = useState<RestTimer>({ active: false, remaining: 0, total: 0, nombre: '' });
+  const [elapsed, setElapsed] = useState(0);
+  const [historyModal, setHistoryModal] = useState<HistoryModal | null>(null);
+
+  // Session elapsed clock
   useEffect(() => {
     const t = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
+  // Rest timer countdown
   useEffect(() => {
     if (!restTimer.active || restTimer.remaining <= 0) return;
     const t = setInterval(() => {
@@ -68,14 +84,18 @@ export default function TrainScreen() {
     return () => clearInterval(t);
   }, [restTimer.active, restTimer.remaining > 0]);
 
+  // --- Derived values -----------------------------------------------------
   const totalSeries = exercises.reduce((a, ex) => a + ex.series, 0);
   const doneSeries = Object.values(sets).reduce(
-    (a, exSets) => a + Object.values(exSets).filter((s) => s.done).length, 0
+    (a, exSets) => a + Object.values(exSets).filter((s) => s.done).length,
+    0
   );
 
   const elapsedMin = Math.floor(elapsed / 60);
   const elapsedSec = elapsed % 60;
   const elapsedLabel = `${elapsedMin}:${String(elapsedSec).padStart(2, '0')}`;
+
+  // --- Handlers -----------------------------------------------------------
 
   const handleToggle = (exId: number, setIdx: number) => {
     if (expanded?.exId === exId && expanded?.setIdx === setIdx) {
@@ -85,20 +105,21 @@ export default function TrainScreen() {
     }
   };
 
-  const handleUpdateSet = (exId: number, setIdx: number, field: keyof SetState, val: number | boolean) => {
-    setSets((prev) => ({
-      ...prev,
-      [exId]: { ...prev[exId], [setIdx]: { ...prev[exId][setIdx], [field]: val } },
-    }));
+  const handleUpdateSet = (exId: number, setIdx: number, field: 'weight' | 'reps' | 'rir' | 'done', val: number | boolean) => {
+    updateSet(exId, setIdx, field, val);
   };
 
-  const handleConfirm = (exId: number, setIdx: number) => {
-    setSets((prev) => ({
-      ...prev,
-      [exId]: { ...prev[exId], [setIdx]: { ...prev[exId][setIdx], done: true } },
-    }));
+  const handleConfirm = async (exId: number, setIdx: number) => {
     const ex = exercises.find((e) => e.id === exId);
     if (!ex) return;
+
+    const currentSet = sets[exId]?.[setIdx];
+    if (!currentSet) return;
+
+    // UPSERT to DB
+    await completeSet(exId, setIdx, { ...currentSet, done: true });
+
+    // Advance expanded to next undone set or next exercise
     const nextIdx = setIdx + 1;
     if (nextIdx < ex.series) {
       setExpanded({ exId, setIdx: nextIdx });
@@ -106,6 +127,8 @@ export default function TrainScreen() {
       const nextEx = exercises.find((e) => e.id > exId);
       setExpanded(nextEx ? { exId: nextEx.id, setIdx: 0 } : null);
     }
+
+    // Start rest timer using the exercise's real descanso_seg
     setRestTimer({
       active: true,
       remaining: ex.descansoSeg,
@@ -114,6 +137,30 @@ export default function TrainScreen() {
     });
   };
 
+  const handleFinishSession = () => {
+    Alert.alert(
+      'Finalizar sesión',
+      '¿Terminaste el entrenamiento? Esto marcará la sesión como completada.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Finalizar', style: 'default', onPress: () => finishSession() },
+      ]
+    );
+  };
+
+  // --- Loading guard ------------------------------------------------------
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={['top']}>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={theme.accent} />
+          <Text style={[styles.loadingText, { color: theme.text3 }]}>Cargando sesión…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // --- Main render --------------------------------------------------------
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={['top']}>
       <View style={{ flex: 1 }}>
@@ -121,24 +168,36 @@ export default function TrainScreen() {
           contentContainerStyle={[styles.scroll, { paddingBottom: restTimer.active ? 180 : 100 }]}
           showsVerticalScrollIndicator={false}
         >
+          {/* Session header */}
           <View style={styles.header}>
             <View>
               <Text style={[styles.enCurso, { color: theme.accent }]}>En curso</Text>
-              <Text style={[styles.sessionName, { color: theme.text1 }]}>PIERNA A</Text>
+              <Text style={[styles.sessionName, { color: theme.text1 }]}>{tipoSesion.toUpperCase()}</Text>
             </View>
             <View style={styles.elapsedWrap}>
               <Text style={[styles.elapsedTime, { color: theme.text1 }]}>{elapsedLabel}</Text>
               <Text style={[styles.seriesCount, { color: theme.text3 }]}>{doneSeries}/{totalSeries} series</Text>
             </View>
           </View>
-          <View style={[styles.progressTrack, { backgroundColor: theme.bg4, marginHorizontal: 20, marginBottom: 4 }]}>
-            <View style={[styles.progressFill, { backgroundColor: theme.accent, width: `${(doneSeries / totalSeries) * 100}%` }]} />
-          </View>
 
+          {/* Progress bar */}
+          {totalSeries > 0 && (
+            <View style={[styles.progressTrack, { backgroundColor: theme.bg4, marginHorizontal: 20, marginBottom: 4 }]}>
+              <View style={[styles.progressFill, { backgroundColor: theme.accent, width: `${(doneSeries / totalSeries) * 100}%` as `${number}%` }]} />
+            </View>
+          )}
+
+          {/* Exercise cards */}
           {exercises.map((ex) => {
             const exSets = sets[ex.id] ?? {};
             const isActive = expanded?.exId === ex.id;
-            const doneCount = Object.values(exSets).filter((s) => s.done).length;
+            const progression = progressionByExercise[ex.id];
+            const readyToIncrease = progression?.readyToIncrease ?? false;
+
+            // Pre-fill fallback: first set's prefilled values or zeros
+            const firstSet = exSets[0];
+            const prefillPeso = firstSet?.weight ?? 0;
+            const prefillReps = firstSet?.reps ?? ex.reps[0];
 
             return (
               <View
@@ -154,9 +213,23 @@ export default function TrainScreen() {
                   },
                 ]}
               >
-                <View style={[styles.exHeader, { borderBottomColor: theme.border }]}>
+                {/* Exercise header — tap for history */}
+                <TouchableOpacity
+                  onPress={() => setHistoryModal({ exerciseId: ex.id, exerciseName: ex.nombre })}
+                  style={[styles.exHeader, { borderBottomColor: theme.border }]}
+                  activeOpacity={0.75}
+                  accessibilityLabel={`Ver historial de ${ex.nombre}`}
+                  accessibilityRole="button"
+                >
                   <View style={styles.exHeaderLeft}>
-                    <Text style={[styles.exName, { color: theme.text1 }]}>{ex.nombre}</Text>
+                    <View style={styles.exNameRow}>
+                      <Text style={[styles.exName, { color: theme.text1 }]}>{ex.nombre}</Text>
+                      {readyToIncrease && (
+                        <View style={[styles.progressionBadge, { backgroundColor: SEMANTIC.greenA }]}>
+                          <Text style={[styles.progressionBadgeText, { color: SEMANTIC.green }]}>↑ Subir peso</Text>
+                        </View>
+                      )}
+                    </View>
                     <View style={styles.exChips}>
                       <View style={[styles.exChip, { backgroundColor: theme.accentA }]}>
                         <Text style={[styles.exChipAccent, { color: theme.accent }]}>
@@ -164,7 +237,7 @@ export default function TrainScreen() {
                         </Text>
                       </View>
                       <View style={[styles.exChip, { backgroundColor: theme.bg3 }]}>
-                        <Text style={[styles.exChipNeutral, { color: theme.text3 }]}>RIR {ex.rir[0]}–{ex.rir[1]}</Text>
+                        <Text style={[styles.exChipNeutral, { color: theme.text3 }]}>RIR {ex.rir}</Text>
                       </View>
                       <View style={[styles.exChip, { backgroundColor: theme.bg3 }]}>
                         <Text style={[styles.exChipNeutral, { color: theme.text3 }]}>{ex.grupoMuscular}</Text>
@@ -174,14 +247,15 @@ export default function TrainScreen() {
                   <View style={styles.exHeaderRight}>
                     <Text style={[styles.exLastLabel, { color: theme.text3 }]}>Última vez</Text>
                     <Text style={[styles.exLastValue, { color: theme.text2 }]}>
-                      {ex.esBodyweight ? `BW × ${ex.ultimoReps}` : `${ex.ultimoPeso} kg × ${ex.ultimoReps}`}
+                      {ex.esBodyweight ? `BW × ${prefillReps}` : `${prefillPeso} kg × ${prefillReps}`}
                     </Text>
-                    <Text style={[styles.exLastDate, { color: theme.text4 }]}>{ex.ultimoFecha}</Text>
+                    <Text style={[styles.historialLink, { color: theme.accent }]}>Historial →</Text>
                   </View>
-                </View>
+                </TouchableOpacity>
 
+                {/* Set rows */}
                 {Array.from({ length: ex.series }).map((_, si) => {
-                  const s = exSets[si] ?? { weight: ex.ultimoPeso, reps: ex.ultimoReps, rir: ex.rir[0], done: false };
+                  const s = exSets[si] ?? { weight: prefillPeso, reps: prefillReps, rir: ex.rir, done: false };
                   const isExp = expanded?.exId === ex.id && expanded?.setIdx === si;
                   const isDone = s.done;
                   const isLast = si === ex.series - 1;
@@ -266,8 +340,18 @@ export default function TrainScreen() {
               </View>
             );
           })}
+
+          {/* Finish session button — shown when all sets done */}
+          {sessionComplete && (
+            <View style={{ marginHorizontal: 20, marginTop: 8, marginBottom: 16 }}>
+              <BtnPrimary onPress={handleFinishSession} icon="check">
+                Finalizar sesión
+              </BtnPrimary>
+            </View>
+          )}
         </ScrollView>
 
+        {/* Rest timer overlay */}
         {restTimer.active && (
           <RestTimerBar
             remaining={restTimer.remaining}
@@ -278,13 +362,28 @@ export default function TrainScreen() {
           />
         )}
       </View>
+
+      {/* Exercise history modal */}
+      {historyModal && (
+        <ExerciseHistoryScreen
+          exerciseId={historyModal.exerciseId}
+          exerciseName={historyModal.exerciseName}
+          onClose={() => setHistoryModal(null)}
+        />
+      )}
     </SafeAreaView>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
+
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   scroll: {},
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  loadingText: { fontSize: 14, marginTop: 8 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 8, paddingBottom: 12 },
   enCurso: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.9, marginBottom: 2 },
   sessionName: { fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
@@ -296,7 +395,10 @@ const styles = StyleSheet.create({
   exCard: { borderWidth: 1, overflow: 'hidden' },
   exHeader: { padding: 13, paddingBottom: 11, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   exHeaderLeft: { flex: 1 },
-  exName: { fontSize: 15, fontWeight: '700', marginBottom: 3 },
+  exNameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 3 },
+  exName: { fontSize: 15, fontWeight: '700' },
+  progressionBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
+  progressionBadgeText: { fontSize: 11, fontWeight: '700' },
   exChips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   exChip: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
   exChipAccent: { fontSize: 11, fontWeight: '600' },
@@ -304,7 +406,7 @@ const styles = StyleSheet.create({
   exHeaderRight: { alignItems: 'flex-end', flexShrink: 0, marginLeft: 8 },
   exLastLabel: { fontSize: 11, marginBottom: 1 },
   exLastValue: { fontSize: 13, fontWeight: '700' },
-  exLastDate: { fontSize: 10 },
+  historialLink: { fontSize: 11, fontWeight: '600', marginTop: 2 },
   setRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 11 },
   setCircle: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   setNum: { fontSize: 12, fontWeight: '700' },
