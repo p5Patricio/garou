@@ -57,6 +57,7 @@ export function useWatch(): UseWatchReturn {
       await requestPermission([
         { accessType: 'read', recordType: 'Steps' },
         { accessType: 'read', recordType: 'HeartRate' },
+        { accessType: 'read', recordType: 'HeartRateVariabilityRmssd' },
         { accessType: 'read', recordType: 'SleepSession' },
         { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
       ]);
