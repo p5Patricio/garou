@@ -1,10 +1,11 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, RADII, type AccentKey } from '../../src/constants/theme';
 import Toggle from '../../src/components/Toggle';
 import SettingsRow from '../../src/components/SettingsRow';
 import SectionLabel from '../../src/components/SectionLabel';
+import { useBackup } from '../../src/hooks/useBackup';
 
 const ACCENT_COLORS: { key: AccentKey; hex: string; label: string }[] = [
   { key: 'amber', hex: '#D4920A', label: 'Ámbar' },
@@ -14,8 +15,15 @@ const ACCENT_COLORS: { key: AccentKey; hex: string; label: string }[] = [
 
 export default function SettingsScreen() {
   const { theme, isDark, setIsDark, accent, setAccent } = useTheme();
+  const { loading, lastResult, errorMsg, exportBackup, importBackup } = useBackup();
 
   const accentLabel = ACCENT_COLORS.find((a) => a.key === accent)?.label ?? 'Ámbar';
+
+  useEffect(() => {
+    if (lastResult === 'error' && errorMsg) {
+      Alert.alert('Error', errorMsg);
+    }
+  }, [lastResult, errorMsg]);
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={['top']}>
@@ -71,8 +79,22 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <SectionLabel>Datos y respaldo</SectionLabel>
           <View style={[styles.sectionCard, { backgroundColor: theme.bg2, borderColor: theme.border, borderRadius: RADII.r2 }]}>
-            <SettingsRow icon="upload" label="Exportar JSON" sub="Descarga todos tus registros" onPress={() => {}} />
-            <SettingsRow icon="download" label="Importar JSON" sub="Restaura desde un archivo" onPress={() => {}} />
+            <SettingsRow
+              icon="upload"
+              label="Exportar respaldo"
+              sub={loading ? 'Procesando…' : 'Descarga todos tus registros'}
+              onPress={() => { if (!loading) exportBackup(); }}
+              right={loading ? <ActivityIndicator size="small" color={theme.accent} /> : undefined}
+            />
+            <Text style={[styles.disclaimer, { color: theme.text4 }]}>
+              Las fotos no se incluyen en el respaldo, solo sus rutas de archivo.
+            </Text>
+            <SettingsRow
+              icon="download"
+              label="Importar respaldo"
+              sub="Restaura desde un archivo JSON"
+              onPress={() => { if (!loading) importBackup(); }}
+            />
             <SettingsRow
               icon="link"
               label="Health Connect"
@@ -124,4 +146,5 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 12, fontWeight: '700' },
   buildInfo: { paddingTop: 20, paddingHorizontal: 20, alignItems: 'center', gap: 4 },
   buildText: { fontSize: 11 },
+  disclaimer: { fontSize: 11, marginHorizontal: 14, marginBottom: 2, fontStyle: 'italic' },
 });
