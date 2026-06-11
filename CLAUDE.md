@@ -180,9 +180,9 @@ const USER = {
 
 | Fase | Descripción | Estado |
 |------|-------------|--------|
-| **0** | Setup + expo-router + SQLite + seed completo | 🔲 Por hacer |
-| **1** | Logger de series + historial + temporizador de descanso | 🔲 |
-| **2** | Logger de macros/comidas + registro de agua | 🔲 |
+| **0** | Setup + expo-router + SQLite + seed completo | ✅ Completa |
+| **1** | Logger de series + historial + temporizador de descanso | ✅ Completa |
+| **2** | Logger de macros/comidas + registro de agua | ✅ Completa |
 | **3** | Métricas (peso/cintura/fotos) + gráficas de progreso y fuerza | 🔲 |
 | **4** | Exportar/importar JSON (respaldo a Google Drive) | 🔲 |
 | **5** | Health Connect: pasos, FC, sueño del Galaxy Watch 7 | 🔲 |
