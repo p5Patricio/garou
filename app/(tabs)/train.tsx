@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import * as Notifications from 'expo-notifications';
 import {
   View,
   Text,
@@ -20,13 +19,22 @@ import Icon from '../../src/components/Icon';
 import { useWorkout } from '../../src/hooks/useWorkout';
 import ExerciseHistoryScreen from '../../src/screens/ExerciseHistoryScreen';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// expo-notifications is unavailable in Expo Go on Android (SDK 53+). Use require so
+// the module error is caught at runtime instead of crashing the whole screen.
+type NotifModule = typeof import('expo-notifications');
+let Notifs: NotifModule | null = null;
+try {
+  Notifs = require('expo-notifications') as NotifModule;
+  Notifs.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+} catch {
+  // Expo Go on Android — notifications will work after EAS build
+}
 
 // ---------------------------------------------------------------------------
 // Local types (UI-only, not persisted)
@@ -76,12 +84,13 @@ export default function TrainScreen() {
   const [historyModal, setHistoryModal] = useState<HistoryModal | null>(null);
   const notifIdRef = useRef<string | null>(null);
 
-  // Notification permissions + Android channel
+  // Notification permissions + Android channel (no-op in Expo Go)
   useEffect(() => {
-    Notifications.requestPermissionsAsync();
-    Notifications.setNotificationChannelAsync('rest-timer', {
+    if (!Notifs) return;
+    Notifs.requestPermissionsAsync();
+    Notifs.setNotificationChannelAsync('rest-timer', {
       name: 'Descanso entre series',
-      importance: Notifications.AndroidImportance.HIGH,
+      importance: Notifs.AndroidImportance.HIGH,
       sound: 'default',
       vibrationPattern: [0, 250, 250, 250],
     });
@@ -122,11 +131,12 @@ export default function TrainScreen() {
   // --- Notification helpers -----------------------------------------------
 
   const scheduleRestNotif = async (seconds: number, exName: string) => {
+    if (!Notifs) return;
     if (notifIdRef.current) {
-      await Notifications.cancelScheduledNotificationAsync(notifIdRef.current).catch(() => {});
+      await Notifs.cancelScheduledNotificationAsync(notifIdRef.current).catch(() => {});
       notifIdRef.current = null;
     }
-    const id = await Notifications.scheduleNotificationAsync({
+    const id = await Notifs.scheduleNotificationAsync({
       content: {
         title: '¡Descanso terminado!',
         body: `Retomá la sesión — ${exName}`,
@@ -134,7 +144,7 @@ export default function TrainScreen() {
         data: { type: 'rest-timer' },
       },
       trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        type: Notifs.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds,
         repeats: false,
       },
@@ -143,10 +153,9 @@ export default function TrainScreen() {
   };
 
   const cancelRestNotif = () => {
-    if (notifIdRef.current) {
-      Notifications.cancelScheduledNotificationAsync(notifIdRef.current).catch(() => {});
-      notifIdRef.current = null;
-    }
+    if (!Notifs || !notifIdRef.current) return;
+    Notifs.cancelScheduledNotificationAsync(notifIdRef.current).catch(() => {});
+    notifIdRef.current = null;
   };
 
   // --- Handlers -----------------------------------------------------------
