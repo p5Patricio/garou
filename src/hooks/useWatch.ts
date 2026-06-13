@@ -7,7 +7,7 @@ import {
   getSdkStatus,
   SdkAvailabilityStatus,
 } from 'react-native-health-connect';
-import { getDB } from '../db';
+import { initDB } from '../db';
 import type { WatchDailyRow, UseWatchReturn } from '../types/watch';
 
 // ---------------------------------------------------------------------------
@@ -141,7 +141,7 @@ export function useWatch(): UseWatchReturn {
       }
 
       // 5. Upsert today's row in watch_daily
-      const db = getDB();
+      const db = await initDB();
       await db.runAsync(
         `INSERT OR REPLACE INTO watch_daily
            (fecha, pasos, fc_reposo_ppm, horas_sueno, hrv, calorias_activas)
@@ -173,7 +173,7 @@ export function useWatch(): UseWatchReturn {
 
     async function loadCached(): Promise<void> {
       try {
-        const db = getDB();
+        const db = await initDB();
         const row = await db.getFirstAsync<WatchDailyRow>(
           `SELECT fecha, pasos, fc_reposo_ppm, horas_sueno, hrv, calorias_activas
            FROM watch_daily WHERE fecha = ?`,
@@ -193,7 +193,9 @@ export function useWatch(): UseWatchReturn {
           initialized.current = true;
         }
       } catch (err) {
-        console.error('[useWatch] init error', err);
+        // Expected in Expo Go: the native module isn't linked. Degrade silently —
+        // initialized stays false, so sync() aborts before touching Health Connect.
+        console.warn('[useWatch] Health Connect unavailable, skipping watch sync', err);
       }
     }
 
