@@ -46,6 +46,13 @@
           }
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6641cc6f-72b6-4a3d-9a14-83c49aa212f6"
+      }
+    },
+    "owner": "patodev"
   }
 }
