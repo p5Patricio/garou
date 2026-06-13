@@ -6,6 +6,7 @@ import type {
   WeightEntry,
   WaistEntry,
   BodyMetricRow,
+  PhotoEntry,
   StrengthExercise,
   StrengthPoint,
   WeeklyBucket,
@@ -43,6 +44,7 @@ export function useMetrics(): UseMetricsReturn {
   const [strengthByExercise, setStrengthByExercise] = useState<Record<number, StrengthPoint[]>>({});
   const [defaultExerciseId, setDefaultExerciseId] = useState<number | null>(null);
   const [lastMetric, setLastMetric] = useState<BodyMetricRow | null>(null);
+  const [photoEntries, setPhotoEntries] = useState<PhotoEntry[]>([]);
 
   // --------------------------------------------------------------------------
   // refresh — re-derive all metrics state from the DB
@@ -167,7 +169,24 @@ export function useMetrics(): UseMetricsReturn {
     );
     const resolvedDefaultExerciseId = defaultRow?.exercise_id ?? null;
 
-    // 10. Last body_metrics row for modal pre-fill
+    // 10. Photo entries — rows with foto_uri, ordered newest first
+    const photoRows = await db.getAllAsync<{
+      id: number;
+      fecha: string;
+      foto_uri: string;
+    }>(
+      `SELECT id, fecha, foto_uri
+       FROM body_metrics
+       WHERE foto_uri IS NOT NULL
+       ORDER BY fecha DESC`
+    );
+    const resolvedPhotoEntries: PhotoEntry[] = photoRows.map((r) => ({
+      id: r.id,
+      fecha: r.fecha,
+      fotoUri: r.foto_uri,
+    }));
+
+    // 11. Last body_metrics row for modal pre-fill
     const lastRow = await db.getFirstAsync<{
       fecha: string;
       peso_kg: number | null;
@@ -199,6 +218,7 @@ export function useMetrics(): UseMetricsReturn {
     setStrengthByExercise(resolvedStrengthByExercise);
     setDefaultExerciseId(resolvedDefaultExerciseId);
     setLastMetric(resolvedLastMetric);
+    setPhotoEntries(resolvedPhotoEntries);
   }, []);
 
   // --------------------------------------------------------------------------
@@ -271,6 +291,7 @@ export function useMetrics(): UseMetricsReturn {
     strengthByExercise,
     defaultExerciseId,
     lastMetric,
+    photoEntries,
     saveMetric,
     refresh,
   };

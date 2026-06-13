@@ -6,7 +6,12 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Image,
+  Dimensions,
 } from 'react-native';
+
+const { width: SCREEN_W } = Dimensions.get('window');
+const PHOTO_COL_SIZE = (SCREEN_W - 40 - 8) / 2;
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, RADII, MACRO_COLORS } from '../../src/constants/theme';
 import StatCard from '../../src/components/StatCard';
@@ -16,12 +21,13 @@ import BtnPrimary from '../../src/components/BtnPrimary';
 import { useMetrics } from '../../src/hooks/useMetrics';
 import LogMetricScreen from '../../src/screens/LogMetricScreen';
 
-type TabKey = 'peso' | 'fuerza' | 'cintura';
+type TabKey = 'peso' | 'fuerza' | 'cintura' | 'fotos';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'peso', label: 'Peso' },
   { key: 'fuerza', label: 'Fuerza' },
   { key: 'cintura', label: 'Cintura' },
+  { key: 'fotos', label: 'Fotos' },
 ];
 
 export default function ProgressScreen() {
@@ -41,6 +47,7 @@ export default function ProgressScreen() {
     strengthByExercise,
     defaultExerciseId,
     lastMetric,
+    photoEntries,
     saveMetric,
   } = useMetrics();
 
@@ -365,6 +372,44 @@ export default function ProgressScreen() {
           </>
         )}
 
+        {/* ===== FOTOS TAB ===== */}
+        {tab === 'fotos' && (
+          <>
+            {photoEntries.length === 0 ? (
+              <View style={styles.emptyWrap}>
+                <Text style={[styles.emptyText, { color: theme.text3 }]}>
+                  Registra una medición con foto para ver tu progreso visual
+                </Text>
+                <View style={styles.emptyBtn}>
+                  <BtnPrimary icon="plus" onPress={() => setLogModalVisible(true)}>
+                    Registrar con foto
+                  </BtnPrimary>
+                </View>
+              </View>
+            ) : (
+              <>
+                <SectionLabel>
+                  {photoEntries.length} foto{photoEntries.length !== 1 ? 's' : ''}
+                </SectionLabel>
+                <View style={styles.photoGrid}>
+                  {photoEntries.map((entry) => (
+                    <View key={entry.id} style={styles.photoItem}>
+                      <Image
+                        source={{ uri: entry.fotoUri }}
+                        style={[styles.photoImg, { borderRadius: RADII.r2 }]}
+                        resizeMode="cover"
+                      />
+                      <Text style={[styles.photoDate, { color: theme.text3 }]}>
+                        {entry.fecha.slice(5)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </>
+            )}
+          </>
+        )}
+
         {/* ===== CINTURA TAB ===== */}
         {tab === 'cintura' && (
           <>
@@ -525,4 +570,25 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 14, textAlign: 'center', lineHeight: 22 },
   emptyBtn: { width: '100%' },
   trendValue: { fontWeight: '700' },
+  photoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 20,
+    gap: 8,
+    marginBottom: 14,
+  },
+  photoItem: {
+    width: PHOTO_COL_SIZE,
+  },
+  photoImg: {
+    width: PHOTO_COL_SIZE,
+    height: PHOTO_COL_SIZE * (4 / 3),
+  },
+  photoDate: {
+    fontSize: 11,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 8,
+  },
 });

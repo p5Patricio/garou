@@ -28,6 +28,18 @@ export interface WaistEntry {
 }
 
 /**
+ * One body_metrics row that has a photo attached.
+ * Rows where foto_uri IS NULL are excluded.
+ */
+export interface PhotoEntry {
+  id: number;
+  /** fecha — YYYY-MM-DD */
+  fecha: string;
+  /** foto_uri — local file URI */
+  fotoUri: string;
+}
+
+/**
  * Raw body_metrics row used for pre-filling the log modal.
  * All optional columns may be null.
  */
@@ -102,6 +114,8 @@ export interface UseMetricsReturn {
   defaultExerciseId: number | null;
   /** Latest body_metrics row for modal pre-fill; null if no entries exist */
   lastMetric: BodyMetricRow | null;
+  /** All body_metrics rows with foto_uri NOT NULL, ordered by fecha DESC */
+  photoEntries: PhotoEntry[];
   saveMetric(data: {
     pesoKg: number;
     cinturaCm: number | null;

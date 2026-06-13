@@ -54,7 +54,8 @@ export default function LogMetricScreen({
   const [fotoUri, setFotoUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [weightError, setWeightError] = useState<string | null>(null);
-  const [photoPermDenied, setPhotoPermDenied] = useState(false);
+  const [cameraPermDenied, setCameraPermDenied] = useState(false);
+  const [galleryPermDenied, setGalleryPermDenied] = useState(false);
 
   // Reset state whenever the modal opens, using latest pre-fill values
   useEffect(() => {
@@ -65,18 +66,33 @@ export default function LogMetricScreen({
       setFotoUri(null);
       setSaving(false);
       setWeightError(null);
-      setPhotoPermDenied(false);
+      setCameraPermDenied(false);
+      setGalleryPermDenied(false);
     }
   }, [visible, lastPeso, lastCintura]);
+
+  const handleTakePhoto = useCallback(async () => {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      setCameraPermDenied(true);
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'] as ImagePicker.MediaType[],
+      quality: 0.7,
+    });
+    if (!result.canceled) {
+      setFotoUri(result.assets[0].uri);
+    }
+  }, []);
 
   const handlePickPhoto = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      setPhotoPermDenied(true);
+      setGalleryPermDenied(true);
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      // Use array form — MediaTypeOptions.Images is deprecated in expo-image-picker v16+
       mediaTypes: ['images'] as ImagePicker.MediaType[],
       quality: 0.7,
     });
@@ -212,33 +228,41 @@ export default function LogMetricScreen({
               Foto del día (opcional)
             </Text>
 
-            {photoPermDenied ? (
-              <View
-                style={[
-                  styles.photoBtn,
-                  styles.photoBtnDisabled,
-                  { borderColor: theme.border, backgroundColor: theme.bg4, borderRadius: RADII.r1 },
-                ]}
-              >
-                <Text style={[styles.photoBtnText, { color: theme.text3 }]}>
-                  Sin permiso para acceder a la galería
-                </Text>
-              </View>
-            ) : (
+            <View style={styles.photoBtnsRow}>
               <TouchableOpacity
-                onPress={handlePickPhoto}
+                onPress={handleTakePhoto}
+                disabled={cameraPermDenied}
                 style={[
                   styles.photoBtn,
-                  { borderColor: theme.border2, backgroundColor: theme.bg3, borderRadius: RADII.r1 },
+                  styles.photoBtnHalf,
+                  { borderColor: theme.border2, backgroundColor: cameraPermDenied ? theme.bg4 : theme.bg3, borderRadius: RADII.r1 },
+                  cameraPermDenied && styles.photoBtnDisabled,
                 ]}
                 activeOpacity={0.7}
               >
-                <Icon name="upload" size={18} color={theme.text2} />
-                <Text style={[styles.photoBtnText, { color: theme.text2 }]}>
-                  {photoLabel ? 'Cambiar foto' : 'Seleccionar foto'}
+                <Icon name="camera" size={18} color={cameraPermDenied ? theme.text3 : theme.text2} />
+                <Text style={[styles.photoBtnText, { color: cameraPermDenied ? theme.text3 : theme.text2 }]}>
+                  {cameraPermDenied ? 'Sin permiso' : 'Cámara'}
                 </Text>
               </TouchableOpacity>
-            )}
+
+              <TouchableOpacity
+                onPress={handlePickPhoto}
+                disabled={galleryPermDenied}
+                style={[
+                  styles.photoBtn,
+                  styles.photoBtnHalf,
+                  { borderColor: theme.border2, backgroundColor: galleryPermDenied ? theme.bg4 : theme.bg3, borderRadius: RADII.r1 },
+                  galleryPermDenied && styles.photoBtnDisabled,
+                ]}
+                activeOpacity={0.7}
+              >
+                <Icon name="upload" size={18} color={galleryPermDenied ? theme.text3 : theme.text2} />
+                <Text style={[styles.photoBtnText, { color: galleryPermDenied ? theme.text3 : theme.text2 }]}>
+                  {galleryPermDenied ? 'Sin permiso' : 'Galería'}
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {photoLabel && (
               <Text
@@ -326,6 +350,13 @@ const styles = StyleSheet.create({
   toggleLabel: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  photoBtnsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  photoBtnHalf: {
+    flex: 1,
   },
   photoBtn: {
     flexDirection: 'row',
