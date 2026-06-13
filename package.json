@@ -31,5 +31,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web"
   },
+  "overrides": {
+    "react-dom": "19.2.3"
+  },
   "private": true
 }
