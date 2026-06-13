@@ -52,7 +52,8 @@ export default function Stepper({ value, onChange, step = 1, min = 0, label, uni
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    gap: 4,
+    alignSelf: 'stretch',
+    gap: 6,
   },
   label: {
     fontSize: 11,
@@ -63,23 +64,25 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'stretch',
+    justifyContent: 'space-between',
   },
   btn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
   btnText: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '300',
-    lineHeight: 28,
+    lineHeight: 30,
   },
   valueWrap: {
-    minWidth: 88,
+    flex: 1,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',

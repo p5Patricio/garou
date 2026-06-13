@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
 
-export type AccentKey = 'amber' | 'coral' | 'olive';
+export type AccentKey = 'amber' | 'coral' | 'blue';
 
 const DARK = {
   bg: '#0E0E12',
@@ -33,7 +33,7 @@ const LIGHT = {
 const ACCENTS: Record<AccentKey, { accent: string; accentA: string; accentB: string }> = {
   amber: { accent: '#D4920A', accentA: 'rgba(212,146,10,0.18)', accentB: 'rgba(212,146,10,0.10)' },
   coral: { accent: '#D95240', accentA: 'rgba(217,82,64,0.18)', accentB: 'rgba(217,82,64,0.10)' },
-  olive: { accent: '#7BAC28', accentA: 'rgba(123,172,40,0.18)', accentB: 'rgba(123,172,40,0.10)' },
+  blue:  { accent: '#3B82F6', accentA: 'rgba(59,130,246,0.18)',  accentB: 'rgba(59,130,246,0.10)' },
 };
 
 export const SEMANTIC = {
@@ -81,7 +81,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [isDark, setIsDark] = useState(true);
-  const [accent, setAccent] = useState<AccentKey>('amber');
+  const [accent, setAccent] = useState<AccentKey>('blue');
   const theme = buildTheme(isDark, accent);
 
   return React.createElement(ThemeContext.Provider, {

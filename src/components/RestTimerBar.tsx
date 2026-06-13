@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useTheme } from '../constants/theme';
-import { RADII } from '../constants/theme';
+import { useTheme, RADII } from '../constants/theme';
 import Icon from './Icon';
 
 interface RestTimerBarProps {
@@ -14,7 +13,7 @@ interface RestTimerBarProps {
 
 export default function RestTimerBar({ remaining, total, nombre, onSkip, onAdd30 }: RestTimerBarProps) {
   const { theme } = useTheme();
-  const pct = (1 - remaining / total) * 100;
+  const pct = total > 0 ? (1 - remaining / total) * 100 : 100;
   const mins = Math.floor(remaining / 60);
   const secs = remaining % 60;
   const label = `${mins}:${String(secs).padStart(2, '0')}`;
@@ -22,33 +21,39 @@ export default function RestTimerBar({ remaining, total, nombre, onSkip, onAdd30
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg2, borderTopColor: theme.border2 }]}>
-      <View style={styles.row}>
+      {/* Row 1: icon + exercise name + countdown */}
+      <View style={styles.headerRow}>
         <View style={[styles.iconWrap, { backgroundColor: urgent ? theme.accentA : theme.bg3 }]}>
           <Icon name="timer" size={16} color={urgent ? theme.accent : theme.text3} strokeW={2} />
         </View>
-        <View style={styles.info}>
-          <View style={styles.topRow}>
-            <Text style={[styles.nombre, { color: theme.text2 }]}>Descanso · {nombre}</Text>
-            <Text style={[styles.time, { color: urgent ? theme.accent : theme.text1 }]}>{label}</Text>
-          </View>
-          <View style={[styles.track, { backgroundColor: theme.bg4 }]}>
-            <View style={[styles.fill, { width: `${pct}%`, backgroundColor: theme.accent }]} />
-          </View>
-        </View>
-        <View style={styles.actions}>
-          <TouchableOpacity
-            onPress={onAdd30}
-            style={[styles.addBtn, { backgroundColor: theme.bg3, borderColor: theme.border2 }]}
-          >
-            <Text style={[styles.addBtnText, { color: theme.text2 }]}>+30s</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={onSkip}
-            style={[styles.skipBtn, { backgroundColor: theme.bg3, borderColor: theme.border2, borderRadius: RADII.r1 }]}
-          >
-            <Icon name="skip" size={14} strokeW={2} color={theme.text2} />
-          </TouchableOpacity>
-        </View>
+        <Text style={[styles.nombre, { color: theme.text2 }]} numberOfLines={1}>
+          Descanso · {nombre}
+        </Text>
+        <Text style={[styles.time, { color: urgent ? theme.accent : theme.text1 }]}>{label}</Text>
+      </View>
+
+      {/* Row 2: progress bar */}
+      <View style={[styles.track, { backgroundColor: theme.bg4 }]}>
+        <View style={[styles.fill, { width: `${pct}%` as `${number}%`, backgroundColor: theme.accent }]} />
+      </View>
+
+      {/* Row 3: action buttons */}
+      <View style={styles.actions}>
+        <TouchableOpacity
+          onPress={onAdd30}
+          style={[styles.actionBtn, { backgroundColor: theme.bg3, borderColor: theme.border2 }]}
+          accessibilityLabel="Agregar 30 segundos al descanso"
+        >
+          <Text style={[styles.actionBtnText, { color: theme.text2 }]}>+30s</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={onSkip}
+          style={[styles.actionBtn, styles.skipBtn, { backgroundColor: theme.bg3, borderColor: theme.border2 }]}
+          accessibilityLabel="Saltar descanso"
+        >
+          <Icon name="skip" size={14} strokeW={2} color={theme.text2} />
+          <Text style={[styles.actionBtnText, { color: theme.text2 }]}>Saltar</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -61,18 +66,20 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     borderTopWidth: 1,
-    padding: 12,
-    paddingBottom: 14,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 16,
+    gap: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.4,
     shadowRadius: 16,
     elevation: 16,
   },
-  row: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
   iconWrap: {
     width: 32,
@@ -82,57 +89,45 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  info: {
-    flex: 1,
-  },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
   nombre: {
+    flex: 1,
     fontSize: 13,
     fontWeight: '600',
   },
   time: {
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: '800',
-    letterSpacing: -0.4,
+    letterSpacing: -0.5,
+    flexShrink: 0,
   },
   track: {
-    height: 4,
-    borderRadius: 2,
+    height: 5,
+    borderRadius: 3,
     overflow: 'hidden',
   },
   fill: {
     height: '100%',
-    borderRadius: 2,
+    borderRadius: 3,
   },
   actions: {
     flexDirection: 'row',
-    gap: 6,
-    flexShrink: 0,
+    gap: 10,
   },
-  addBtn: {
-    height: 34,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+  actionBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: RADII.r1,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 48,
-  },
-  addBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
   },
   skipBtn: {
-    width: 34,
-    height: 34,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 48,
+    flexDirection: 'row',
+    gap: 6,
+  },
+  actionBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

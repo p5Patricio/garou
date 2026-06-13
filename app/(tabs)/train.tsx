@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import * as Notifications from 'expo-notifications';
 import {
   View,
   Text,
@@ -18,6 +19,14 @@ import BtnPrimary from '../../src/components/BtnPrimary';
 import Icon from '../../src/components/Icon';
 import { useWorkout } from '../../src/hooks/useWorkout';
 import ExerciseHistoryScreen from '../../src/screens/ExerciseHistoryScreen';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 // ---------------------------------------------------------------------------
 // Local types (UI-only, not persisted)
@@ -65,6 +74,18 @@ export default function TrainScreen() {
   const [restTimer, setRestTimer] = useState<RestTimer>({ active: false, remaining: 0, total: 0, nombre: '' });
   const [elapsed, setElapsed] = useState(0);
   const [historyModal, setHistoryModal] = useState<HistoryModal | null>(null);
+  const notifIdRef = useRef<string | null>(null);
+
+  // Notification permissions + Android channel
+  useEffect(() => {
+    Notifications.requestPermissionsAsync();
+    Notifications.setNotificationChannelAsync('rest-timer', {
+      name: 'Descanso entre series',
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: 'default',
+      vibrationPattern: [0, 250, 250, 250],
+    });
+  }, []);
 
   // Session elapsed clock
   useEffect(() => {
@@ -77,7 +98,10 @@ export default function TrainScreen() {
     if (!restTimer.active || restTimer.remaining <= 0) return;
     const t = setInterval(() => {
       setRestTimer((r) => {
-        if (r.remaining <= 1) return { ...r, active: false, remaining: 0 };
+        if (r.remaining <= 1) {
+          notifIdRef.current = null;
+          return { ...r, active: false, remaining: 0 };
+        }
         return { ...r, remaining: r.remaining - 1 };
       });
     }, 1000);
@@ -94,6 +118,36 @@ export default function TrainScreen() {
   const elapsedMin = Math.floor(elapsed / 60);
   const elapsedSec = elapsed % 60;
   const elapsedLabel = `${elapsedMin}:${String(elapsedSec).padStart(2, '0')}`;
+
+  // --- Notification helpers -----------------------------------------------
+
+  const scheduleRestNotif = async (seconds: number, exName: string) => {
+    if (notifIdRef.current) {
+      await Notifications.cancelScheduledNotificationAsync(notifIdRef.current).catch(() => {});
+      notifIdRef.current = null;
+    }
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '¡Descanso terminado!',
+        body: `Retomá la sesión — ${exName}`,
+        sound: true,
+        data: { type: 'rest-timer' },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds,
+        repeats: false,
+      },
+    });
+    notifIdRef.current = id;
+  };
+
+  const cancelRestNotif = () => {
+    if (notifIdRef.current) {
+      Notifications.cancelScheduledNotificationAsync(notifIdRef.current).catch(() => {});
+      notifIdRef.current = null;
+    }
+  };
 
   // --- Handlers -----------------------------------------------------------
 
@@ -129,12 +183,14 @@ export default function TrainScreen() {
     }
 
     // Start rest timer using the exercise's real descanso_seg
+    const timerNombre = ex.nombre.split(' ').slice(0, 2).join(' ');
     setRestTimer({
       active: true,
       remaining: ex.descansoSeg,
       total: ex.descansoSeg,
-      nombre: ex.nombre.split(' ').slice(0, 2).join(' '),
+      nombre: timerNombre,
     });
+    scheduleRestNotif(ex.descansoSeg, timerNombre);
   };
 
   const handleFinishSession = () => {
@@ -316,7 +372,6 @@ export default function TrainScreen() {
                               label="Peso"
                               unit="kg"
                             />
-                            <View style={[styles.divider, { backgroundColor: theme.border }]} />
                             <Stepper
                               value={s.reps}
                               onChange={(v) => handleUpdateSet(ex.id, si, 'reps', v)}
@@ -357,8 +412,15 @@ export default function TrainScreen() {
             remaining={restTimer.remaining}
             total={restTimer.total}
             nombre={restTimer.nombre}
-            onSkip={() => setRestTimer((r) => ({ ...r, active: false }))}
-            onAdd30={() => setRestTimer((r) => ({ ...r, remaining: r.remaining + 30 }))}
+            onSkip={() => {
+              cancelRestNotif();
+              setRestTimer((r) => ({ ...r, active: false }));
+            }}
+            onAdd30={() => {
+              const newRemaining = restTimer.remaining + 30;
+              setRestTimer((r) => ({ ...r, remaining: r.remaining + 30 }));
+              scheduleRestNotif(newRemaining, restTimer.nombre);
+            }}
           />
         )}
       </View>
@@ -414,7 +476,6 @@ const styles = StyleSheet.create({
   rirBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   rirBadgeText: { fontSize: 12, fontWeight: '700' },
   loggerExpanded: { padding: 16 },
-  steppers: { flexDirection: 'row', gap: 12, justifyContent: 'center', marginBottom: 16 },
-  divider: { width: 1, flexShrink: 0 },
+  steppers: { flexDirection: 'column', gap: 20, marginBottom: 20 },
   rirRow: { marginBottom: 14 },
 });

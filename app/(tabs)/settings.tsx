@@ -10,7 +10,7 @@ import { useBackup } from '../../src/hooks/useBackup';
 const ACCENT_COLORS: { key: AccentKey; hex: string; label: string }[] = [
   { key: 'amber', hex: '#D4920A', label: 'Ámbar' },
   { key: 'coral', hex: '#D95240', label: 'Coral' },
-  { key: 'olive', hex: '#7BAC28', label: 'Verde oliva' },
+  { key: 'blue', hex: '#3B82F6', label: 'Azul' },
 ];
 
 export default function SettingsScreen() {
