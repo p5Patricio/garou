@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,10 @@ import {
   ActivityIndicator,
   Modal,
   Alert,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { useTheme, RADII, SEMANTIC } from '../../src/constants/theme';
 import Stepper from '../../src/components/Stepper';
 import RirSelector from '../../src/components/RirSelector';
@@ -17,6 +19,7 @@ import RestTimerBar from '../../src/components/RestTimerBar';
 import BtnPrimary from '../../src/components/BtnPrimary';
 import Icon from '../../src/components/Icon';
 import { useWorkout } from '../../src/hooks/useWorkout';
+import { getDB } from '../../src/db';
 import ExerciseHistoryScreen from '../../src/screens/ExerciseHistoryScreen';
 
 // expo-notifications is unavailable in Expo Go on Android (SDK 53+). Use require so
@@ -28,6 +31,8 @@ try {
   Notifs.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
       shouldPlaySound: true,
       shouldSetBadge: false,
     }),
@@ -50,12 +55,40 @@ interface RestTimer {
   remaining: number;
   total: number;
   nombre: string;
+  /** Absolute epoch ms when the timer should hit 0 (0 when inactive). */
+  endTime: number;
 }
 
 interface HistoryModal {
   exerciseId: number;
   exerciseName: string;
 }
+
+interface CardioLog {
+  id: number;
+  tipo: string;
+  minutos: number;
+  fc_promedio_ppm: number | null;
+  zona: number | null;
+}
+
+const CARDIO_TIPOS: { key: string; label: string; icon: string }[] = [
+  { key: 'bici', label: 'Bici', icon: 'bike' },
+  { key: 'pasos', label: 'Pasos', icon: 'run' },
+  { key: 'otro', label: 'Otro', icon: 'heart' },
+];
+
+const CARDIO_TIPO_ICON: Record<string, string> = {
+  bici: 'bike',
+  pasos: 'run',
+  otro: 'heart',
+};
+
+const CARDIO_TIPO_LABEL: Record<string, string> = {
+  bici: 'Bici',
+  pasos: 'Pasos',
+  otro: 'Otro',
+};
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -74,15 +107,83 @@ export default function TrainScreen() {
     completeSet,
     updateSet,
     finishSession,
+    togglePlacas,
     tipoSesion,
   } = useWorkout();
 
   // --- Ephemeral UI state -------------------------------------------------
   const [expanded, setExpanded] = useState<Expanded | null>(null);
-  const [restTimer, setRestTimer] = useState<RestTimer>({ active: false, remaining: 0, total: 0, nombre: '' });
+  const [restTimer, setRestTimer] = useState<RestTimer>({ active: false, remaining: 0, total: 0, nombre: '', endTime: 0 });
   const [elapsed, setElapsed] = useState(0);
   const [historyModal, setHistoryModal] = useState<HistoryModal | null>(null);
   const notifIdRef = useRef<string | null>(null);
+
+  // --- Cardio quick-log state ---------------------------------------------
+  const [cardioLogs, setCardioLogs] = useState<CardioLog[]>([]);
+  const [cardioFormOpen, setCardioFormOpen] = useState(false);
+  const [cardioForm, setCardioForm] = useState<{ tipo: string; minutos: number }>({
+    tipo: 'bici',
+    minutos: 30,
+  });
+
+  const loadCardio = useCallback(async () => {
+    try {
+      const db = getDB();
+      const rows = await db.getAllAsync<CardioLog>(
+        `SELECT id, tipo, minutos, fc_promedio_ppm, zona
+         FROM cardio_logs WHERE fecha = date('now') ORDER BY id ASC`
+      );
+      setCardioLogs(rows);
+    } catch (err) {
+      console.error('[TrainScreen] loadCardio error', err);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadCardio();
+    }, [loadCardio])
+  );
+
+  const handleSaveCardio = async () => {
+    try {
+      const db = getDB();
+      await db.runAsync(
+        `INSERT INTO cardio_logs (fecha, tipo, minutos) VALUES (date('now'), ?, ?)`,
+        [cardioForm.tipo, cardioForm.minutos]
+      );
+      setCardioFormOpen(false);
+      setCardioForm({ tipo: 'bici', minutos: 30 });
+      await loadCardio();
+    } catch (err) {
+      console.error('[TrainScreen] saveCardio error', err);
+    }
+  };
+
+  const handleDeleteCardio = (id: number) => {
+    Alert.alert(
+      'Eliminar cardio',
+      '¿Eliminar este registro de cardio?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: () => {
+            (async () => {
+              try {
+                const db = getDB();
+                await db.runAsync(`DELETE FROM cardio_logs WHERE id = ?`, [id]);
+                await loadCardio();
+              } catch (err) {
+                console.error('[TrainScreen] deleteCardio error', err);
+              }
+            })();
+          },
+        },
+      ]
+    );
+  };
 
   // Notification permissions + Android channel (no-op in Expo Go)
   useEffect(() => {
@@ -116,6 +217,25 @@ export default function TrainScreen() {
     }, 1000);
     return () => clearInterval(t);
   }, [restTimer.active, restTimer.remaining > 0]);
+
+  // Re-sync the rest timer from the absolute endTime when the app returns to
+  // the foreground. The JS thread can be throttled while backgrounded, so the
+  // countdown above may be stale — recompute from wall-clock time.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState !== 'active') return;
+      setRestTimer((r) => {
+        if (!r.active) return r;
+        const remaining = Math.max(0, Math.round((r.endTime - Date.now()) / 1000));
+        if (remaining <= 0) {
+          notifIdRef.current = null;
+          return { ...r, active: false, remaining: 0 };
+        }
+        return { ...r, remaining };
+      });
+    });
+    return () => sub.remove();
+  }, []);
 
   // --- Derived values -----------------------------------------------------
   const totalSeries = exercises.reduce((a, ex) => a + ex.series, 0);
@@ -198,6 +318,7 @@ export default function TrainScreen() {
       remaining: ex.descansoSeg,
       total: ex.descansoSeg,
       nombre: timerNombre,
+      endTime: Date.now() + ex.descansoSeg * 1000,
     });
     scheduleRestNotif(ex.descansoSeg, timerNombre);
   };
@@ -307,12 +428,27 @@ export default function TrainScreen() {
                       <View style={[styles.exChip, { backgroundColor: theme.bg3 }]}>
                         <Text style={[styles.exChipNeutral, { color: theme.text3 }]}>{ex.grupoMuscular}</Text>
                       </View>
+                      {!ex.esBodyweight && (
+                        <TouchableOpacity
+                          onPress={() => togglePlacas(ex.id)}
+                          style={[styles.unitChip, { backgroundColor: theme.bg4, borderColor: theme.border2 }]}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          accessibilityLabel={`Cambiar unidad de ${ex.nombre} a ${ex.usaPlacas ? 'kilogramos' : 'placas'}`}
+                          accessibilityRole="button"
+                        >
+                          <Text style={[styles.unitChipText, { color: theme.text2 }]}>
+                            {ex.usaPlacas ? 'placas' : 'kg'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   </View>
                   <View style={styles.exHeaderRight}>
                     <Text style={[styles.exLastLabel, { color: theme.text3 }]}>Última vez</Text>
                     <Text style={[styles.exLastValue, { color: theme.text2 }]}>
-                      {ex.esBodyweight ? `BW × ${prefillReps}` : `${prefillPeso} kg × ${prefillReps}`}
+                      {ex.esBodyweight
+                        ? `BW × ${prefillReps}`
+                        : `${prefillPeso} ${ex.usaPlacas ? 'placas' : 'kg'} × ${prefillReps}`}
                     </Text>
                     <Text style={[styles.historialLink, { color: theme.accent }]}>Historial →</Text>
                   </View>
@@ -354,7 +490,7 @@ export default function TrainScreen() {
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={[styles.setWeightReps, { color: isDone ? theme.text3 : theme.text1 }]}>
-                            {s.weight === 0 ? 'BW' : `${s.weight} kg`}
+                            {s.weight === 0 ? 'BW' : `${s.weight} ${ex.usaPlacas ? 'placas' : 'kg'}`}
                             <Text style={{ fontWeight: '500', color: theme.text3 }}> × </Text>
                             {s.reps}
                           </Text>
@@ -376,10 +512,10 @@ export default function TrainScreen() {
                             <Stepper
                               value={s.weight}
                               onChange={(v) => handleUpdateSet(ex.id, si, 'weight', v)}
-                              step={ex.esBodyweight ? 0 : 2.5}
+                              step={ex.esBodyweight ? 0 : ex.usaPlacas ? 1 : 2.5}
                               min={0}
                               label="Peso"
-                              unit="kg"
+                              unit={ex.usaPlacas ? 'placas' : 'kg'}
                             />
                             <Stepper
                               value={s.reps}
@@ -413,6 +549,113 @@ export default function TrainScreen() {
               </BtnPrimary>
             </View>
           )}
+
+          {/* Cardio de hoy */}
+          <View
+            style={[
+              styles.cardioCard,
+              {
+                backgroundColor: theme.bg2,
+                borderColor: theme.border,
+                borderRadius: RADII.r2,
+                marginHorizontal: 20,
+                marginTop: 8,
+                marginBottom: 16,
+              },
+            ]}
+          >
+            <View style={styles.cardioHeader}>
+              <Text style={[styles.cardioTitle, { color: theme.text1 }]}>Cardio de hoy</Text>
+            </View>
+
+            {cardioLogs.length === 0 ? (
+              <Text style={[styles.cardioEmpty, { color: theme.text3 }]}>
+                Sin cardio registrado hoy
+              </Text>
+            ) : (
+              cardioLogs.map((c, ci) => (
+                <TouchableOpacity
+                  key={c.id}
+                  onLongPress={() => handleDeleteCardio(c.id)}
+                  style={[
+                    styles.cardioRow,
+                    {
+                      borderTopColor: theme.border,
+                      borderTopWidth: ci === 0 ? 1 : 0,
+                      borderBottomColor: theme.border,
+                      borderBottomWidth: ci < cardioLogs.length - 1 ? 1 : 0,
+                    },
+                  ]}
+                  activeOpacity={0.8}
+                  accessibilityLabel={`${CARDIO_TIPO_LABEL[c.tipo] ?? c.tipo}, ${c.minutos} minutos, mantén presionado para eliminar`}
+                >
+                  <View style={[styles.cardioIconWrap, { backgroundColor: theme.bg3 }]}>
+                    <Icon name={CARDIO_TIPO_ICON[c.tipo] ?? 'heart'} size={15} color={theme.text2} strokeW={1.7} />
+                  </View>
+                  <Text style={[styles.cardioRowTipo, { color: theme.text1 }]}>
+                    {CARDIO_TIPO_LABEL[c.tipo] ?? c.tipo}
+                  </Text>
+                  <Text style={[styles.cardioRowMin, { color: theme.text3 }]}>{c.minutos} min</Text>
+                </TouchableOpacity>
+              ))
+            )}
+
+            {!cardioFormOpen ? (
+              <TouchableOpacity
+                onPress={() => setCardioFormOpen(true)}
+                style={[styles.cardioAddBtn, { backgroundColor: theme.accentA, borderRadius: RADII.r1 }]}
+                accessibilityLabel="Registrar cardio"
+                accessibilityRole="button"
+              >
+                <Text style={[styles.cardioAddText, { color: theme.accent }]}>＋ Registrar cardio</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={[styles.cardioForm, { borderTopColor: theme.border }]}>
+                {/* Tipo chips */}
+                <View style={styles.cardioChipsRow}>
+                  {CARDIO_TIPOS.map((t) => {
+                    const active = cardioForm.tipo === t.key;
+                    return (
+                      <TouchableOpacity
+                        key={t.key}
+                        onPress={() => setCardioForm((f) => ({ ...f, tipo: t.key }))}
+                        style={[
+                          styles.cardioChip,
+                          {
+                            backgroundColor: active ? theme.accentA : theme.bg3,
+                            borderColor: active ? theme.accent : theme.border,
+                          },
+                        ]}
+                        accessibilityLabel={`Tipo ${t.label}`}
+                        accessibilityRole="button"
+                      >
+                        <Icon name={t.icon} size={15} color={active ? theme.accent : theme.text3} strokeW={1.7} />
+                        <Text style={[styles.cardioChipText, { color: active ? theme.accent : theme.text2 }]}>
+                          {t.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Minutos stepper */}
+                <View style={styles.cardioStepperWrap}>
+                  <Stepper
+                    value={cardioForm.minutos}
+                    onChange={(v) => setCardioForm((f) => ({ ...f, minutos: Math.min(180, v) }))}
+                    step={5}
+                    min={5}
+                    label="Minutos"
+                    unit="min"
+                  />
+                </View>
+
+                <BtnPrimary onPress={handleSaveCardio} icon="check">
+                  Guardar
+                </BtnPrimary>
+              </View>
+            )}
+          </View>
         </ScrollView>
 
         {/* Rest timer overlay */}
@@ -427,7 +670,7 @@ export default function TrainScreen() {
             }}
             onAdd30={() => {
               const newRemaining = restTimer.remaining + 30;
-              setRestTimer((r) => ({ ...r, remaining: r.remaining + 30 }));
+              setRestTimer((r) => ({ ...r, remaining: r.remaining + 30, endTime: r.endTime + 30 * 1000 }));
               scheduleRestNotif(newRemaining, restTimer.nombre);
             }}
           />
@@ -474,6 +717,8 @@ const styles = StyleSheet.create({
   exChip: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
   exChipAccent: { fontSize: 11, fontWeight: '600' },
   exChipNeutral: { fontSize: 11, fontWeight: '600' },
+  unitChip: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 5, borderWidth: 1, minHeight: 24 },
+  unitChipText: { fontSize: 11, fontWeight: '700' },
   exHeaderRight: { alignItems: 'flex-end', flexShrink: 0, marginLeft: 8 },
   exLastLabel: { fontSize: 11, marginBottom: 1 },
   exLastValue: { fontSize: 13, fontWeight: '700' },
@@ -487,4 +732,19 @@ const styles = StyleSheet.create({
   loggerExpanded: { padding: 16 },
   steppers: { flexDirection: 'column', gap: 20, marginBottom: 20 },
   rirRow: { marginBottom: 14 },
+  cardioCard: { borderWidth: 1, overflow: 'hidden' },
+  cardioHeader: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 },
+  cardioTitle: { fontSize: 15, fontWeight: '700' },
+  cardioEmpty: { fontSize: 13, paddingHorizontal: 16, paddingBottom: 12 },
+  cardioRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, minHeight: 48 },
+  cardioIconWrap: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  cardioRowTipo: { flex: 1, fontSize: 14, fontWeight: '600' },
+  cardioRowMin: { fontSize: 13, fontWeight: '600' },
+  cardioAddBtn: { margin: 16, marginTop: 12, height: 48, alignItems: 'center', justifyContent: 'center' },
+  cardioAddText: { fontSize: 14, fontWeight: '700' },
+  cardioForm: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16, borderTopWidth: 1, gap: 16 },
+  cardioChipsRow: { flexDirection: 'row', gap: 8 },
+  cardioChip: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 48, borderRadius: 8, borderWidth: 1 },
+  cardioChipText: { fontSize: 13, fontWeight: '700' },
+  cardioStepperWrap: { marginVertical: 4 },
 });

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { initDB, getDB } from '../db';
 import { isReadyToIncrease } from '../utils/progression';
+import { resolveSessionType } from '../utils/sessionRotation';
 import type {
   UiExercise,
   SetState,
@@ -8,9 +9,6 @@ import type {
   SetRow,
   ProgressionResult,
 } from '../types/workout';
-
-// Default session type for Phase 1 — no rotation algorithm yet.
-export const DEFAULT_TIPO_SESION = 'Pierna A';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -33,6 +31,7 @@ function mapExercise(row: {
   rir_objetivo: number;
   descanso_seg: number;
   notas_tecnica: string | null;
+  usa_placas: number;
 }): UiExercise {
   return {
     id: row.id,
@@ -46,6 +45,7 @@ function mapExercise(row: {
     descansoSeg: row.descanso_seg,
     notasTecnica: row.notas_tecnica,
     esBodyweight: row.equipo === 'libre' && row.grupo_muscular === 'Abdomen',
+    usaPlacas: row.usa_placas === 1,
   };
 }
 
@@ -64,14 +64,16 @@ export interface UseWorkoutReturn {
   completeSet: (exId: number, numSerie: number, state: SetState) => Promise<void>;
   updateSet: (exId: number, numSerie: number, field: keyof SetState, value: number | boolean) => void;
   finishSession: () => Promise<void>;
+  togglePlacas: (exId: number) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useWorkout(tipoSesion: string = DEFAULT_TIPO_SESION): UseWorkoutReturn {
+export function useWorkout(): UseWorkoutReturn {
   const [loading, setLoading] = useState(true);
+  const [tipoSesion, setTipoSesion] = useState<string>('');
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [exercises, setExercises] = useState<UiExercise[]>([]);
   const [sets, setSets] = useState<SetsMap>({});
@@ -83,7 +85,7 @@ export function useWorkout(tipoSesion: string = DEFAULT_TIPO_SESION): UseWorkout
   // --------------------------------------------------------------------------
   // Session resolution: resume-or-create
   // --------------------------------------------------------------------------
-  const resolveSession = useCallback(async (): Promise<number> => {
+  const resolveSession = useCallback(async (sessionType: string): Promise<number> => {
     const db = getDB();
     const fecha = today();
 
@@ -92,7 +94,7 @@ export function useWorkout(tipoSesion: string = DEFAULT_TIPO_SESION): UseWorkout
       `SELECT id FROM workout_sessions
        WHERE fecha = ? AND tipo_sesion = ? AND completada = 0
        LIMIT 1`,
-      [fecha, tipoSesion]
+      [fecha, sessionType]
     );
 
     if (existing) {
@@ -103,14 +105,14 @@ export function useWorkout(tipoSesion: string = DEFAULT_TIPO_SESION): UseWorkout
     await db.runAsync(
       `INSERT OR IGNORE INTO workout_sessions (fecha, tipo_sesion, completada)
        VALUES (?, ?, 0)`,
-      [fecha, tipoSesion]
+      [fecha, sessionType]
     );
 
     const created = await db.getFirstAsync<{ id: number }>(
       `SELECT id FROM workout_sessions
        WHERE fecha = ? AND tipo_sesion = ? AND completada = 0
        LIMIT 1`,
-      [fecha, tipoSesion]
+      [fecha, sessionType]
     );
 
     if (!created) {
@@ -119,12 +121,12 @@ export function useWorkout(tipoSesion: string = DEFAULT_TIPO_SESION): UseWorkout
 
     startTimeRef.current = Date.now();
     return created.id;
-  }, [tipoSesion]);
+  }, []);
 
   // --------------------------------------------------------------------------
   // Load exercises for the session's tipo_sesion
   // --------------------------------------------------------------------------
-  const loadExercises = useCallback(async (): Promise<UiExercise[]> => {
+  const loadExercises = useCallback(async (sessionType: string): Promise<UiExercise[]> => {
     const db = getDB();
     const rows = await db.getAllAsync<{
       id: number;
@@ -138,17 +140,18 @@ export function useWorkout(tipoSesion: string = DEFAULT_TIPO_SESION): UseWorkout
       rir_objetivo: number;
       descanso_seg: number;
       notas_tecnica: string | null;
+      usa_placas: number;
     }>(
       `SELECT id, nombre, grupo_muscular, equipo, sesion,
               series_objetivo, reps_min, reps_max, rir_objetivo,
-              descanso_seg, notas_tecnica
+              descanso_seg, notas_tecnica, usa_placas
        FROM exercises
        WHERE sesion = ?
        ORDER BY id ASC`,
-      [tipoSesion]
+      [sessionType]
     );
     return rows.map(mapExercise);
-  }, [tipoSesion]);
+  }, []);
 
   // --------------------------------------------------------------------------
   // Build initial SetsMap from prior session data + current session's logs
@@ -244,7 +247,7 @@ export function useWorkout(tipoSesion: string = DEFAULT_TIPO_SESION): UseWorkout
   // Compute progression for all exercises
   // --------------------------------------------------------------------------
   const computeProgression = useCallback(
-    async (exs: UiExercise[], currentSessionId: number): Promise<Record<number, ProgressionResult>> => {
+    async (exs: UiExercise[], currentSessionId: number, sessionType: string): Promise<Record<number, ProgressionResult>> => {
       const db = getDB();
       const result: Record<number, ProgressionResult> = {};
 
@@ -258,7 +261,7 @@ export function useWorkout(tipoSesion: string = DEFAULT_TIPO_SESION): UseWorkout
              AND ws.id <> ?
            ORDER BY ws.fecha DESC
            LIMIT 2`,
-          [tipoSesion, currentSessionId]
+          [sessionType, currentSessionId]
         );
 
         if (recentSessions.length < 2) {
@@ -290,7 +293,7 @@ export function useWorkout(tipoSesion: string = DEFAULT_TIPO_SESION): UseWorkout
 
       return result;
     },
-    [tipoSesion]
+    []
   );
 
   // --------------------------------------------------------------------------
@@ -302,12 +305,14 @@ export function useWorkout(tipoSesion: string = DEFAULT_TIPO_SESION): UseWorkout
     async function load() {
       try {
         await initDB();
-        const sessId = await resolveSession();
-        const exs = await loadExercises();
+        const resolvedSession = await resolveSessionType(getDB());
+        const sessId = await resolveSession(resolvedSession);
+        const exs = await loadExercises(resolvedSession);
         const setsMap = await buildSetsMap(exs, sessId);
-        const progression = await computeProgression(exs, sessId);
+        const progression = await computeProgression(exs, sessId, resolvedSession);
 
         if (!cancelled) {
+          setTipoSesion(resolvedSession);
           setSessionId(sessId);
           setExercises(exs);
           setSets(setsMap);
@@ -322,7 +327,7 @@ export function useWorkout(tipoSesion: string = DEFAULT_TIPO_SESION): UseWorkout
 
     load();
     return () => { cancelled = true; };
-  }, [tipoSesion, resolveSession, loadExercises, buildSetsMap, computeProgression]);
+  }, [resolveSession, loadExercises, buildSetsMap, computeProgression]);
 
   // --------------------------------------------------------------------------
   // completeSet — UPSERT to DB, then update local state
@@ -399,6 +404,24 @@ export function useWorkout(tipoSesion: string = DEFAULT_TIPO_SESION): UseWorkout
     );
   }, [sessionId]);
 
+  // --------------------------------------------------------------------------
+  // togglePlacas — flip the kg/placas unit for one exercise, then refresh list
+  // --------------------------------------------------------------------------
+  const togglePlacas = useCallback(
+    async (exId: number): Promise<void> => {
+      const db = getDB();
+      await db.runAsync(
+        `UPDATE exercises
+         SET usa_placas = CASE WHEN usa_placas = 1 THEN 0 ELSE 1 END
+         WHERE id = ?`,
+        [exId]
+      );
+      const exs = await loadExercises(tipoSesion);
+      setExercises(exs);
+    },
+    [loadExercises, tipoSesion]
+  );
+
   return {
     loading,
     sessionId,
@@ -410,5 +433,6 @@ export function useWorkout(tipoSesion: string = DEFAULT_TIPO_SESION): UseWorkout
     completeSet,
     updateSet,
     finishSession,
+    togglePlacas,
   };
 }

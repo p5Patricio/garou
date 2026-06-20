@@ -10,7 +10,7 @@ export const user = {
 export const hoy = {
   fecha: 'Mar, 9 jun',
   sesion: 'PIERNA A',
-  diasSemana: ['Torso A', 'Pierna A', 'Día Ligero', 'Descanso', 'Torso B', 'Pierna B', 'Descanso'],
+  diasSemana: ['Torso A', 'Pierna A', 'Ligero', 'Descanso', 'Torso B', 'Pierna B', 'Descanso'],
   water: { ml: 1800, target: 3200 },
   pesoHoy: null as number | null,
   pesoUltimo: { val: 78.5, dias: 2, tendencia: -0.3 },

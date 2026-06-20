@@ -3,6 +3,7 @@ import { SCHEMA_SQL } from './schema';
 import { seedDatabase } from './seed';
 
 let _db: SQLite.SQLiteDatabase | null = null;
+let _initPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 // Rebuild set_logs with the UNIQUE constraint.
 // SQLite cannot ALTER-ADD a constraint, so we use the copy-swap pattern.
@@ -12,7 +13,7 @@ async function migrateDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
   );
   const currentVersion = versionRow?.user_version ?? 0;
 
-  if (currentVersion >= 3) return;
+  if (currentVersion >= 6) return;
 
   if (currentVersion < 1) {
   // Migration 1: add UNIQUE(session_id, exercise_id, num_serie) to set_logs
@@ -94,28 +95,65 @@ async function migrateDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
   });
   await db.execAsync('PRAGMA user_version = 3;');
   }
+
+  if (currentVersion < 4) {
+  // Migration 4: reset exercises to match the updated routine from PDF.
+  // set_logs reference exercises by id, so they must be cleared first.
+  await db.withTransactionAsync(async () => {
+    await db.execAsync('DELETE FROM set_logs;');
+    await db.execAsync('DELETE FROM exercises;');
+  });
+  await db.execAsync('PRAGMA user_version = 4;');
+  }
+
+  if (currentVersion < 5) {
+  // Migration 5: force a fresh reseed. A previous seed bug (a read nested inside
+  // an open write transaction) rolled back exercise inserts, leaving the table
+  // empty at user_version=4. Clear exercises so the fixed seed runs again.
+  // set_logs reference exercises by id, so they must be cleared first.
+  await db.withTransactionAsync(async () => {
+    await db.execAsync('DELETE FROM set_logs;');
+    await db.execAsync('DELETE FROM exercises;');
+  });
+  await db.execAsync('PRAGMA user_version = 5;');
+  }
+
+  if (currentVersion < 6) {
+  // Migration 6: add usa_placas column to exercises so machines that show plate
+  // counts can toggle their weight unit. ALTER TABLE ADD COLUMN is atomic — no
+  // transaction needed.
+  await db.execAsync(
+    'ALTER TABLE exercises ADD COLUMN usa_placas INTEGER NOT NULL DEFAULT 0;'
+  );
+  await db.execAsync('PRAGMA user_version = 6;');
+  }
 }
 
 export async function initDB(): Promise<SQLite.SQLiteDatabase> {
   if (_db) return _db;
+  if (_initPromise) return _initPromise;
 
-  const db = await SQLite.openDatabaseAsync('garou.db');
+  _initPromise = (async () => {
+    const db = await SQLite.openDatabaseAsync('garou.db');
 
-  const statements = SCHEMA_SQL
-    .split(';')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+    const statements = SCHEMA_SQL
+      .split(';')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
 
-  for (const stmt of statements) {
-    await db.execAsync(stmt + ';');
-  }
+    for (const stmt of statements) {
+      await db.execAsync(stmt + ';');
+    }
 
-  await migrateDatabase(db);
+    await migrateDatabase(db);
 
-  await seedDatabase(db);
+    await seedDatabase(db);
 
-  _db = db;
-  return db;
+    _db = db;
+    return db;
+  })();
+
+  return _initPromise;
 }
 
 export function getDB(): SQLite.SQLiteDatabase {

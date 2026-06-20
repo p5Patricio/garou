@@ -14,8 +14,8 @@ import MacroRing from '../../src/components/MacroRing';
 import MacroBar from '../../src/components/MacroBar';
 import StatCard from '../../src/components/StatCard';
 import SectionLabel from '../../src/components/SectionLabel';
-import { hoy, macros } from '../../src/data/appData';
 import { useWatch } from '../../src/hooks/useWatch';
+import { useDashboard } from '../../src/hooks/useDashboard';
 
 const WEEK_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const WEEK_SESSIONS = ['T.A', 'P.A', 'Lig', '—', 'T.B', 'P.B', '—'];
@@ -23,28 +23,44 @@ const WEEK_SESSIONS = ['T.A', 'P.A', 'Lig', '—', 'T.B', 'P.B', '—'];
 export default function HoyScreen() {
   const { theme } = useTheme();
   const router = useRouter();
-  const log = macros.logHoy;
-  const target = macros.entrenoDia;
 
-  const { data, loading, lastSyncAt, sync } = useWatch();
+  const { data: watchData, loading: watchLoading, lastSyncAt, sync } = useWatch();
+  const { data: dashboardData, loading: dashboardLoading } = useDashboard();
 
-  const waterPct = Math.round((hoy.water.ml / hoy.water.target) * 100);
+  if (dashboardLoading || !dashboardData) {
+    return (
+      <View style={[styles.safe, { backgroundColor: theme.bg, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={theme.accent} />
+      </View>
+    );
+  }
+
+  const log = dashboardData.macros.logHoy;
+  const target = dashboardData.macros.target;
+
+  const waterPct = Math.round((dashboardData.water.ml / dashboardData.water.target) * 100);
 
   // Watch-derived values with "--" fallback when null
-  const stepsValue = data?.pasos != null ? data.pasos.toLocaleString() : '--';
-  const fcValue = data?.fc_reposo_ppm != null ? data.fc_reposo_ppm.toString() : '--';
-  const hrvSub = data?.hrv != null ? `HRV: ${data.hrv} ms` : 'HRV: --';
-  const sleepValue = data?.horas_sueno != null ? data.horas_sueno.toFixed(1) : '--';
+  const stepsValue = watchData?.pasos != null ? watchData.pasos.toLocaleString() : '--';
+  const fcValue = watchData?.fc_reposo_ppm != null ? watchData.fc_reposo_ppm.toString() : '--';
+  const hrvSub = watchData?.hrv != null ? `HRV: ${watchData.hrv} ms` : 'HRV: --';
+  const sleepValue = watchData?.horas_sueno != null ? watchData.horas_sueno.toFixed(1) : '--';
 
   const syncLabel = lastSyncAt
     ? `Última sync: ${lastSyncAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
     : 'Sin datos';
 
+  const getLocalDayIndex = () => {
+    const day = new Date().getDay();
+    return day === 0 ? 6 : day - 1;
+  };
+  const todayIndex = getLocalDayIndex();
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Text style={[styles.date, { color: theme.text3 }]}>{hoy.fecha}</Text>
+          <Text style={[styles.date, { color: theme.text3 }]}>{dashboardData.fecha}</Text>
           <Text style={[styles.greeting, { color: theme.text1 }]}>Buenos días</Text>
         </View>
 
@@ -56,10 +72,10 @@ export default function HoyScreen() {
             </View>
             <View style={styles.sessionBody}>
               <View style={styles.sessionInfo}>
-                <Text style={[styles.sessionName, { color: theme.text1 }]}>{hoy.sesion}</Text>
-                <Text style={[styles.sessionSub, { color: theme.text3 }]}>Cuádriceps · Isquios · Glúteo · Pantorrillas</Text>
+                <Text style={[styles.sessionName, { color: theme.text1 }]}>{dashboardData.workout.session.toUpperCase()}</Text>
+                <Text style={[styles.sessionSub, { color: theme.text3 }]}>{dashboardData.workout.musclesLabel}</Text>
                 <View style={styles.chips}>
-                  {['6 ejercicios', '20 series', '~65 min'].map((t) => (
+                  {[`${dashboardData.workout.numEjercicios} ejercicios`, `${dashboardData.workout.numSeries} series`, `~${dashboardData.workout.duracionEstimada} min`].map((t) => (
                     <View key={t} style={[styles.chip, { backgroundColor: theme.bg3 }]}>
                       <Text style={[styles.chipText, { color: theme.text3 }]}>{t}</Text>
                     </View>
@@ -76,8 +92,8 @@ export default function HoyScreen() {
           </View>
           <View style={[styles.weekStrip, { borderTopColor: theme.border }]}>
             {WEEK_SESSIONS.map((s, i) => {
-              const isToday = i === 1;
-              const isPast = i === 0;
+              const isToday = i === todayIndex;
+              const isPast = i < todayIndex;
               return (
                 <View key={i} style={styles.weekDay}>
                   <Text style={[styles.weekDayLabel, { color: isToday ? theme.accent : theme.text4 }]}>
@@ -118,16 +134,16 @@ export default function HoyScreen() {
         <SectionLabel>Resumen del día</SectionLabel>
         <View style={[styles.statGrid, { paddingHorizontal: 20, marginBottom: 8 }]}>
           <View style={styles.statItem}>
-            <StatCard icon="water" label="Agua" value={`${(hoy.water.ml / 1000).toFixed(1)}`} unit="L" sub={`Meta: ${(hoy.water.target / 1000).toFixed(1)} L · ${waterPct}%`} />
+            <StatCard icon="water" label="Agua" value={`${(dashboardData.water.ml / 1000).toFixed(1)}`} unit="L" sub={`Meta: ${(dashboardData.water.target / 1000).toFixed(1)} L · ${waterPct}%`} />
           </View>
           <View style={styles.statItem}>
             <StatCard icon="run" label="Pasos" value={stepsValue} sub="Samsung Health" />
           </View>
           <View style={styles.statItem}>
-            <StatCard icon="heart" label="FC reposo" value={fcValue} unit={data?.fc_reposo_ppm != null ? 'ppm' : ''} sub={hrvSub} />
+            <StatCard icon="heart" label="FC reposo" value={fcValue} unit={watchData?.fc_reposo_ppm != null ? 'ppm' : ''} sub={hrvSub} />
           </View>
           <View style={styles.statItem}>
-            <StatCard icon="sleep" label="Sueño" value={sleepValue} unit={data?.horas_sueno != null ? 'h' : ''} sub="Ayer noche" />
+            <StatCard icon="sleep" label="Sueño" value={sleepValue} unit={watchData?.horas_sueno != null ? 'h' : ''} sub="Ayer noche" />
           </View>
         </View>
 
@@ -136,17 +152,17 @@ export default function HoyScreen() {
           <Text style={[styles.syncLabel, { color: theme.text3 }]}>{syncLabel}</Text>
           <TouchableOpacity
             onPress={sync}
-            disabled={loading}
+            disabled={watchLoading}
             style={[
               styles.syncBtn,
               {
-                backgroundColor: loading ? theme.bg3 : theme.bg2,
+                backgroundColor: watchLoading ? theme.bg3 : theme.bg2,
                 borderColor: theme.border,
               },
             ]}
             accessibilityLabel="Sincronizar datos del reloj"
           >
-            {loading ? (
+            {watchLoading ? (
               <ActivityIndicator size="small" color={theme.accent} />
             ) : (
               <Text style={[styles.syncBtnText, { color: theme.accent }]}>Sync reloj</Text>
@@ -159,15 +175,19 @@ export default function HoyScreen() {
             <View>
               <Text style={[styles.pesoLabel, { color: theme.text3 }]}>Peso</Text>
               <View style={styles.pesoValueRow}>
-                <Text style={[styles.pesoValue, { color: theme.text1 }]}>{hoy.pesoUltimo.val}</Text>
+                <Text style={[styles.pesoValue, { color: theme.text1 }]}>
+                  {dashboardData.weight.ultimo != null ? dashboardData.weight.ultimo.toFixed(1) : '--'}
+                </Text>
                 <Text style={[styles.pesoUnit, { color: theme.text3 }]}>kg</Text>
               </View>
-              <Text style={[styles.pesoSub, { color: theme.text3 }]}>hace {hoy.pesoUltimo.dias} días</Text>
+              <Text style={[styles.pesoSub, { color: theme.text3 }]}>
+                {dashboardData.weight.diasAgo != null ? `hace ${dashboardData.weight.diasAgo} días` : 'sin datos'}
+              </Text>
             </View>
             <View style={styles.pesoRight}>
               <Text style={[styles.pesoLabel, { color: theme.text3 }]}>Tendencia</Text>
-              <Text style={[styles.pesoTendencia, { color: SEMANTIC.green }]}>
-                {hoy.pesoUltimo.tendencia > 0 ? '+' : ''}{hoy.pesoUltimo.tendencia} kg
+              <Text style={[styles.pesoTendencia, { color: dashboardData.weight.tendencia > 0 ? '#D95240' : SEMANTIC.green }]}>
+                {dashboardData.weight.tendencia > 0 ? '+' : ''}{dashboardData.weight.tendencia} kg
               </Text>
               <Text style={[styles.pesoSub, { color: theme.text3 }]}>promedio semanal</Text>
             </View>

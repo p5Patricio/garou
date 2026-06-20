@@ -82,6 +82,8 @@ export interface StrengthExercise {
   /** exercises.id */
   id: number;
   nombre: string;
+  /** exercises.usa_placas — true when load is shown in plates instead of kg */
+  usaPlacas: boolean;
 }
 
 /**

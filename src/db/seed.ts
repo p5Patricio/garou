@@ -14,24 +14,47 @@ interface ExerciseSeed {
 }
 
 const EXERCISES: ExerciseSeed[] = [
-  { nombre: 'Sentadilla con barra', grupo_muscular: 'Cuádriceps', equipo: 'libre', sesion: 'Pierna A', series_objetivo: 4, reps_min: 5, reps_max: 8, rir_objetivo: 2, descanso_seg: 180, notas_tecnica: 'Rodillas alineadas con pies, pecho arriba' },
+  // ── TORSO A ────────────────────────────────────────────────────────────────
+  { nombre: 'Press de banca con barra', grupo_muscular: 'Pecho', equipo: 'libre', sesion: 'Torso A', series_objetivo: 4, reps_min: 5, reps_max: 8, rir_objetivo: 2, descanso_seg: 150, notas_tecnica: 'Escápulas retraídas, arco natural' },
+  { nombre: 'Remo con apoyo en pecho', grupo_muscular: 'Espalda', equipo: 'máquina', sesion: 'Torso A', series_objetivo: 4, reps_min: 8, reps_max: 12, rir_objetivo: 1, descanso_seg: 120, notas_tecnica: 'Máquina o seal row — codos hacia caderas, retracción escapular' },
+  { nombre: 'Press inclinado con mancuernas', grupo_muscular: 'Pecho', equipo: 'libre', sesion: 'Torso A', series_objetivo: 3, reps_min: 8, reps_max: 12, rir_objetivo: 1, descanso_seg: 120, notas_tecnica: 'Codos a 45°, no flares' },
+  { nombre: 'Jalón al pecho', grupo_muscular: 'Espalda', equipo: 'polea', sesion: 'Torso A', series_objetivo: 3, reps_min: 10, reps_max: 12, rir_objetivo: 1, descanso_seg: 105, notas_tecnica: 'Agarre neutro o supino — codos hacia caderas' },
+  { nombre: 'Elevaciones laterales', grupo_muscular: 'Hombros', equipo: 'libre', sesion: 'Torso A', series_objetivo: 3, reps_min: 12, reps_max: 20, rir_objetivo: 0, descanso_seg: 90, notas_tecnica: 'Codo ligeramente doblado, sin balanceo' },
+  { nombre: 'Curl con barra Z', grupo_muscular: 'Bíceps', equipo: 'libre', sesion: 'Torso A', series_objetivo: 3, reps_min: 8, reps_max: 12, rir_objetivo: 1, descanso_seg: 90, notas_tecnica: 'SS con Extensión de tríceps en polea — alternar sin descanso entre ellos' },
+  { nombre: 'Extensión de tríceps en polea', grupo_muscular: 'Tríceps', equipo: 'polea', sesion: 'Torso A', series_objetivo: 3, reps_min: 10, reps_max: 15, rir_objetivo: 0, descanso_seg: 90, notas_tecnica: 'SS con Curl con barra Z — descansar al cerrar el par' },
+
+  // ── PIERNA A ───────────────────────────────────────────────────────────────
+  { nombre: 'Sentadilla con barra', grupo_muscular: 'Cuádriceps', equipo: 'libre', sesion: 'Pierna A', series_objetivo: 4, reps_min: 5, reps_max: 8, rir_objetivo: 2, descanso_seg: 180, notas_tecnica: 'Alta o hack — rodillas alineadas con pies, pecho arriba' },
   { nombre: 'Prensa de pierna', grupo_muscular: 'Cuádriceps', equipo: 'máquina', sesion: 'Pierna A', series_objetivo: 3, reps_min: 10, reps_max: 15, rir_objetivo: 1, descanso_seg: 120, notas_tecnica: 'Pies separados a lo ancho de hombros' },
   { nombre: 'Extensión de cuádriceps', grupo_muscular: 'Cuádriceps', equipo: 'máquina', sesion: 'Pierna A', series_objetivo: 3, reps_min: 12, reps_max: 15, rir_objetivo: 0, descanso_seg: 90, notas_tecnica: 'Contracción completa al tope' },
   { nombre: 'Curl femoral sentado', grupo_muscular: 'Isquios', equipo: 'máquina', sesion: 'Pierna A', series_objetivo: 3, reps_min: 10, reps_max: 15, rir_objetivo: 1, descanso_seg: 90, notas_tecnica: 'Rango completo, sin rebote' },
-  { nombre: 'Elevación de gemelos', grupo_muscular: 'Pantorrillas', equipo: 'máquina', sesion: 'Pierna A', series_objetivo: 4, reps_min: 8, reps_max: 12, rir_objetivo: 0, descanso_seg: 90, notas_tecnica: 'Pausa 1 seg abajo, subir explosivo' },
-  { nombre: 'Elevación de piernas', grupo_muscular: 'Abdomen', equipo: 'libre', sesion: 'Pierna A', series_objetivo: 3, reps_min: 10, reps_max: 15, rir_objetivo: 1, descanso_seg: 60, notas_tecnica: null },
-  { nombre: 'Press de banca plano', grupo_muscular: 'Pecho', equipo: 'libre', sesion: 'Torso A', series_objetivo: 4, reps_min: 6, reps_max: 10, rir_objetivo: 2, descanso_seg: 180, notas_tecnica: 'Escápulas retraídas, arco natural' },
-  { nombre: 'Press inclinado con mancuernas', grupo_muscular: 'Pecho', equipo: 'libre', sesion: 'Torso A', series_objetivo: 3, reps_min: 10, reps_max: 14, rir_objetivo: 1, descanso_seg: 120, notas_tecnica: 'Codos a 45°, no flares' },
-  { nombre: 'Jalón al pecho agarre cerrado', grupo_muscular: 'Espalda', equipo: 'polea', sesion: 'Torso A', series_objetivo: 3, reps_min: 10, reps_max: 14, rir_objetivo: 1, descanso_seg: 120, notas_tecnica: 'Codos hacia caderas' },
-  { nombre: 'Remo en polea baja', grupo_muscular: 'Espalda', equipo: 'polea', sesion: 'Torso A', series_objetivo: 3, reps_min: 10, reps_max: 14, rir_objetivo: 1, descanso_seg: 90, notas_tecnica: null },
-  { nombre: 'Curl con barra', grupo_muscular: 'Bíceps', equipo: 'libre', sesion: 'Torso A', series_objetivo: 3, reps_min: 10, reps_max: 14, rir_objetivo: 1, descanso_seg: 90, notas_tecnica: null },
-  { nombre: 'Press francés', grupo_muscular: 'Tríceps', equipo: 'libre', sesion: 'Torso A', series_objetivo: 3, reps_min: 10, reps_max: 14, rir_objetivo: 1, descanso_seg: 90, notas_tecnica: null },
-  { nombre: 'Press de hombros con mancuernas', grupo_muscular: 'Hombros', equipo: 'libre', sesion: 'Torso B', series_objetivo: 4, reps_min: 8, reps_max: 12, rir_objetivo: 2, descanso_seg: 120, notas_tecnica: null },
-  { nombre: 'Elevaciones laterales', grupo_muscular: 'Hombros', equipo: 'libre', sesion: 'Torso B', series_objetivo: 4, reps_min: 12, reps_max: 16, rir_objetivo: 0, descanso_seg: 60, notas_tecnica: 'Codo ligeramente doblado, no balanceo' },
-  { nombre: 'Peso muerto rumano', grupo_muscular: 'Isquios', equipo: 'libre', sesion: 'Pierna B', series_objetivo: 4, reps_min: 8, reps_max: 12, rir_objetivo: 2, descanso_seg: 180, notas_tecnica: 'Cadera atrás, espalda neutral' },
-  { nombre: 'Leg press', grupo_muscular: 'Cuádriceps', equipo: 'máquina', sesion: 'Pierna B', series_objetivo: 3, reps_min: 12, reps_max: 16, rir_objetivo: 1, descanso_seg: 120, notas_tecnica: null },
-  { nombre: 'Hip thrust', grupo_muscular: 'Glúteo', equipo: 'libre', sesion: 'Pierna B', series_objetivo: 3, reps_min: 10, reps_max: 14, rir_objetivo: 1, descanso_seg: 120, notas_tecnica: 'Contracción glútea al tope' },
-  { nombre: 'Plancha', grupo_muscular: 'Abdomen', equipo: 'libre', sesion: 'Día Ligero', series_objetivo: 3, reps_min: 30, reps_max: 60, rir_objetivo: 1, descanso_seg: 60, notas_tecnica: 'Segundos de hold, no rkees' },
+  { nombre: 'Elevación de gemelos de pie', grupo_muscular: 'Pantorrillas', equipo: 'máquina', sesion: 'Pierna A', series_objetivo: 4, reps_min: 8, reps_max: 12, rir_objetivo: 0, descanso_seg: 90, notas_tecnica: 'Pausa 1 seg abajo, subir explosivo' },
+  { nombre: 'Elevación de piernas colgado', grupo_muscular: 'Abdomen', equipo: 'libre', sesion: 'Pierna A', series_objetivo: 3, reps_min: 10, reps_max: 15, rir_objetivo: 1, descanso_seg: 90, notas_tecnica: 'O crunch en polea' },
+
+  // ── DÍA LIGERO ─────────────────────────────────────────────────────────────
+  { nombre: 'Elevaciones laterales', grupo_muscular: 'Hombros', equipo: 'libre', sesion: 'Ligero', series_objetivo: 4, reps_min: 12, reps_max: 20, rir_objetivo: 0, descanso_seg: 90, notas_tecnica: 'Mancuerna o polea — codo ligeramente doblado, todo ligero' },
+  { nombre: 'Pec deck invertido / pájaros', grupo_muscular: 'Hombros', equipo: 'máquina', sesion: 'Ligero', series_objetivo: 4, reps_min: 12, reps_max: 20, rir_objetivo: 0, descanso_seg: 90, notas_tecnica: 'Deltoides posterior — rango completo, sin trampa' },
+  { nombre: 'Encogimientos de hombros', grupo_muscular: 'Trapecio', equipo: 'libre', sesion: 'Ligero', series_objetivo: 3, reps_min: 10, reps_max: 15, rir_objetivo: 0, descanso_seg: 90, notas_tecnica: 'Barra o mancuernas — pausa arriba' },
+  { nombre: 'Curl de muñeca', grupo_muscular: 'Antebrazos', equipo: 'libre', sesion: 'Ligero', series_objetivo: 3, reps_min: 12, reps_max: 20, rir_objetivo: 0, descanso_seg: 60, notas_tecnica: 'SS con Curl inverso — alternar sin descanso entre ellos' },
+  { nombre: 'Curl inverso', grupo_muscular: 'Antebrazos', equipo: 'libre', sesion: 'Ligero', series_objetivo: 3, reps_min: 12, reps_max: 15, rir_objetivo: 0, descanso_seg: 60, notas_tecnica: 'SS con Curl de muñeca — descansar al cerrar el par' },
+  { nombre: 'Elevación de gemelos sentado', grupo_muscular: 'Pantorrillas', equipo: 'máquina', sesion: 'Ligero', series_objetivo: 4, reps_min: 12, reps_max: 20, rir_objetivo: 0, descanso_seg: 90, notas_tecnica: 'Sóleo — pausa abajo, todo ligero' },
+  { nombre: 'Crunch en polea', grupo_muscular: 'Abdomen', equipo: 'polea', sesion: 'Ligero', series_objetivo: 3, reps_min: 10, reps_max: 15, rir_objetivo: 1, descanso_seg: 90, notas_tecnica: 'O plancha lastrada — opcional' },
+
+  // ── TORSO B ────────────────────────────────────────────────────────────────
+  { nombre: 'Press militar sentado', grupo_muscular: 'Hombros', equipo: 'libre', sesion: 'Torso B', series_objetivo: 4, reps_min: 6, reps_max: 10, rir_objetivo: 2, descanso_seg: 150, notas_tecnica: 'Mancuernas o barra — núcleo apretado' },
+  { nombre: 'Dominadas / Jalón prono', grupo_muscular: 'Espalda', equipo: 'libre', sesion: 'Torso B', series_objetivo: 4, reps_min: 8, reps_max: 12, rir_objetivo: 1, descanso_seg: 120, notas_tecnica: 'Lastradas o asistidas según nivel' },
+  { nombre: 'Press de pecho en máquina', grupo_muscular: 'Pecho', equipo: 'máquina', sesion: 'Torso B', series_objetivo: 3, reps_min: 8, reps_max: 12, rir_objetivo: 1, descanso_seg: 120, notas_tecnica: 'O fondos en paralelas' },
+  { nombre: 'Remo en polea baja', grupo_muscular: 'Espalda', equipo: 'polea', sesion: 'Torso B', series_objetivo: 3, reps_min: 10, reps_max: 12, rir_objetivo: 1, descanso_seg: 105, notas_tecnica: 'Agarre estrecho' },
+  { nombre: 'Curl predicador / inclinado', grupo_muscular: 'Bíceps', equipo: 'máquina', sesion: 'Torso B', series_objetivo: 4, reps_min: 8, reps_max: 12, rir_objetivo: 1, descanso_seg: 90, notas_tecnica: 'SS con Press cerrado/ext. sobre cabeza — alternar sin descanso' },
+  { nombre: 'Press cerrado / ext. sobre la cabeza', grupo_muscular: 'Tríceps', equipo: 'libre', sesion: 'Torso B', series_objetivo: 3, reps_min: 8, reps_max: 12, rir_objetivo: 0, descanso_seg: 90, notas_tecnica: 'SS con Curl predicador — descansar al cerrar el par' },
+
+  // ── PIERNA B ───────────────────────────────────────────────────────────────
+  { nombre: 'Peso muerto rumano', grupo_muscular: 'Isquios', equipo: 'libre', sesion: 'Pierna B', series_objetivo: 4, reps_min: 6, reps_max: 10, rir_objetivo: 2, descanso_seg: 150, notas_tecnica: 'O hexagonal — cadera atrás, espalda neutral, técnica impecable' },
+  { nombre: 'Sentadilla hack o prensa', grupo_muscular: 'Cuádriceps', equipo: 'máquina', sesion: 'Pierna B', series_objetivo: 3, reps_min: 10, reps_max: 12, rir_objetivo: 1, descanso_seg: 120, notas_tecnica: 'Énfasis cuádriceps' },
+  { nombre: 'Curl femoral tumbado', grupo_muscular: 'Isquios', equipo: 'máquina', sesion: 'Pierna B', series_objetivo: 3, reps_min: 10, reps_max: 12, rir_objetivo: 0, descanso_seg: 90, notas_tecnica: 'Rango completo' },
+  { nombre: 'Empuje de cadera (hip thrust)', grupo_muscular: 'Glúteo', equipo: 'libre', sesion: 'Pierna B', series_objetivo: 3, reps_min: 8, reps_max: 12, rir_objetivo: 1, descanso_seg: 120, notas_tecnica: 'Contracción glútea al tope' },
+  { nombre: 'Elevación de gemelos de pie', grupo_muscular: 'Pantorrillas', equipo: 'máquina', sesion: 'Pierna B', series_objetivo: 4, reps_min: 8, reps_max: 12, rir_objetivo: 0, descanso_seg: 90, notas_tecnica: 'O burro — pausa abajo' },
+  { nombre: 'Encogimientos de hombros', grupo_muscular: 'Trapecio', equipo: 'libre', sesion: 'Pierna B', series_objetivo: 3, reps_min: 10, reps_max: 15, rir_objetivo: 0, descanso_seg: 90, notas_tecnica: 'Barra o mancuernas — pausa arriba' },
 ];
 
 interface FoodSeed {
@@ -62,9 +85,12 @@ const FOODS: FoodSeed[] = [
 ];
 
 export async function seedDatabase(db: SQLiteDatabase): Promise<void> {
-  const countResult = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM exercises');
-  if (countResult && countResult.count > 0) return;
+  // Read BEFORE any transaction — reads inside an open write transaction throw
+  // "cannot start a transaction within a transaction" in expo-sqlite.
+  const exerciseCount = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM exercises');
+  if (exerciseCount && exerciseCount.count > 0) return;
 
+  // Transaction 1: exercises only — no reads inside.
   await db.withTransactionAsync(async () => {
     for (const ex of EXERCISES) {
       await db.runAsync(
@@ -73,22 +99,29 @@ export async function seedDatabase(db: SQLiteDatabase): Promise<void> {
         [ex.nombre, ex.grupo_muscular, ex.equipo, ex.sesion, ex.series_objetivo, ex.reps_min, ex.reps_max, ex.rir_objetivo, ex.descanso_seg, ex.notas_tecnica]
       );
     }
-
-    for (const food of FOODS) {
-      await db.runAsync(
-        `INSERT INTO foods (nombre, kcal_100g, proteina_100g, carbos_100g, grasa_100g, precio_aprox_mxn)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [food.nombre, food.kcal_100g, food.proteina_100g, food.carbos_100g, food.grasa_100g, food.precio_aprox_mxn]
-      );
-    }
-
-    await db.runAsync(
-      `INSERT INTO nutrition_targets (tipo_dia, kcal_objetivo, proteina_g, carbos_g, grasa_g) VALUES (?, ?, ?, ?, ?)`,
-      ['entreno', 2450, 160, 300, 70]
-    );
-    await db.runAsync(
-      `INSERT INTO nutrition_targets (tipo_dia, kcal_objetivo, proteina_g, carbos_g, grasa_g) VALUES (?, ?, ?, ?, ?)`,
-      ['descanso', 2300, 160, 265, 70]
-    );
   });
+
+  // Read BETWEEN transactions — never inside one.
+  const foodCount = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM foods');
+  if (!foodCount || foodCount.count === 0) {
+    // Transaction 2: foods + nutrition targets — no reads inside.
+    await db.withTransactionAsync(async () => {
+      for (const food of FOODS) {
+        await db.runAsync(
+          `INSERT INTO foods (nombre, kcal_100g, proteina_100g, carbos_100g, grasa_100g, precio_aprox_mxn)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [food.nombre, food.kcal_100g, food.proteina_100g, food.carbos_100g, food.grasa_100g, food.precio_aprox_mxn]
+        );
+      }
+
+      await db.runAsync(
+        `INSERT OR IGNORE INTO nutrition_targets (tipo_dia, kcal_objetivo, proteina_g, carbos_g, grasa_g) VALUES (?, ?, ?, ?, ?)`,
+        ['entreno', 2450, 160, 300, 70]
+      );
+      await db.runAsync(
+        `INSERT OR IGNORE INTO nutrition_targets (tipo_dia, kcal_objetivo, proteina_g, carbos_g, grasa_g) VALUES (?, ?, ?, ?, ?)`,
+        ['descanso', 2300, 160, 265, 70]
+      );
+    });
+  }
 }

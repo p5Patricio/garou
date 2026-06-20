@@ -13,22 +13,37 @@ import {
 const { width: SCREEN_W } = Dimensions.get('window');
 const PHOTO_COL_SIZE = (SCREEN_W - 40 - 8) / 2;
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme, RADII, MACRO_COLORS } from '../../src/constants/theme';
+import { useFocusEffect } from 'expo-router';
+import { useTheme, RADII, MACRO_COLORS, SEMANTIC } from '../../src/constants/theme';
 import StatCard from '../../src/components/StatCard';
 import SectionLabel from '../../src/components/SectionLabel';
 import LineChart from '../../src/components/LineChart';
 import BtnPrimary from '../../src/components/BtnPrimary';
 import { useMetrics } from '../../src/hooks/useMetrics';
+import { getDB } from '../../src/db';
 import LogMetricScreen from '../../src/screens/LogMetricScreen';
 
-type TabKey = 'peso' | 'fuerza' | 'cintura' | 'fotos';
+type TabKey = 'peso' | 'fuerza' | 'cintura' | 'fotos' | 'semana';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'peso', label: 'Peso' },
   { key: 'fuerza', label: 'Fuerza' },
   { key: 'cintura', label: 'Cintura' },
   { key: 'fotos', label: 'Fotos' },
+  { key: 'semana', label: 'Semana' },
 ];
+
+// Weekly view targets
+const WATER_TARGET_ML = 3000;
+const KCAL_THRESHOLD = 2300;
+const PROTEIN_TARGET = 160;
+
+interface WeekDay {
+  fecha: string;
+  totalMl: number;
+  kcal: number;
+  proteina: number;
+}
 
 export default function ProgressScreen() {
   const { theme } = useTheme();
@@ -55,6 +70,67 @@ export default function ProgressScreen() {
     defaultExerciseId
   );
 
+  // Weekly water + nutrition history (last 7 days, most recent first)
+  const [weekDays, setWeekDays] = useState<WeekDay[]>([]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      let cancelled = false;
+
+      async function loadWeek() {
+        try {
+          const db = getDB();
+
+          const waterRows = await db.getAllAsync<{ fecha: string; total_ml: number }>(
+            `SELECT fecha, COALESCE(SUM(ml), 0) AS total_ml
+             FROM water_logs
+             WHERE fecha >= date('now', '-6 days')
+             GROUP BY fecha`
+          );
+          const kcalRows = await db.getAllAsync<{ fecha: string; kcal: number }>(
+            `SELECT nl.fecha, COALESCE(SUM(nl.gramos * f.kcal_100g / 100), 0) AS kcal
+             FROM nutrition_logs nl
+             JOIN foods f ON f.id = nl.food_id
+             WHERE nl.fecha >= date('now', '-6 days')
+             GROUP BY nl.fecha`
+          );
+          const proteinaRows = await db.getAllAsync<{ fecha: string; proteina: number }>(
+            `SELECT nl.fecha, COALESCE(SUM(nl.gramos * f.proteina_100g / 100), 0) AS proteina
+             FROM nutrition_logs nl
+             JOIN foods f ON f.id = nl.food_id
+             WHERE nl.fecha >= date('now', '-6 days')
+             GROUP BY nl.fecha`
+          );
+
+          const waterByDate = new Map(waterRows.map((r) => [r.fecha, r.total_ml]));
+          const kcalByDate = new Map(kcalRows.map((r) => [r.fecha, r.kcal]));
+          const proteinaByDate = new Map(proteinaRows.map((r) => [r.fecha, r.proteina]));
+
+          // Build the 7-day grid client-side, most recent first, filling gaps with 0
+          const days: WeekDay[] = [];
+          for (let offset = 0; offset < 7; offset++) {
+            const d = new Date();
+            d.setDate(d.getDate() - offset);
+            const fecha = d.toISOString().slice(0, 10);
+            days.push({
+              fecha,
+              totalMl: waterByDate.get(fecha) ?? 0,
+              kcal: kcalByDate.get(fecha) ?? 0,
+              proteina: proteinaByDate.get(fecha) ?? 0,
+            });
+          }
+
+          if (!cancelled) setWeekDays(days);
+        } catch (err) {
+          console.error('[progress] week load error', err);
+        }
+      }
+
+      loadWeek();
+      return () => { cancelled = true; };
+    }, [])
+  );
+
   // Sync selectedExerciseId when defaultExerciseId resolves (async load)
   useEffect(() => {
     if (selectedExerciseId === null && defaultExerciseId !== null) {
@@ -63,6 +139,14 @@ export default function ProgressScreen() {
   }, [defaultExerciseId, selectedExerciseId]);
 
   // Helpers
+  const dayLabel = (fecha: string): string => {
+    // fecha is 'YYYY-MM-DD' — parse as local date to avoid TZ shift
+    const [y, m, d] = fecha.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    return `${dias[date.getDay()]} ${d}`;
+  };
+
   const trendArrow =
     weightTrend === 'up' ? '↑' : weightTrend === 'down' ? '↓' : '→';
 
@@ -90,8 +174,9 @@ export default function ProgressScreen() {
     selectedExerciseId !== null
       ? (strengthByExercise[selectedExerciseId] ?? [])
       : [];
-  const selectedExerciseName =
-    strengthExercises.find((e) => e.id === selectedExerciseId)?.nombre ?? '';
+  const selectedExercise = strengthExercises.find((e) => e.id === selectedExerciseId);
+  const selectedExerciseName = selectedExercise?.nombre ?? '';
+  const unitLabel = selectedExercise?.usaPlacas ? 'placas' : 'kg';
 
   if (loading) {
     return (
@@ -323,7 +408,7 @@ export default function ProgressScreen() {
                 ) : (
                   <>
                     <SectionLabel>
-                      {selectedExerciseName ? `${selectedExerciseName} — carga (kg)` : 'Carga (kg)'}
+                      {selectedExerciseName ? `${selectedExerciseName} — carga (${unitLabel})` : `Carga (${unitLabel})`}
                     </SectionLabel>
                     <View
                       style={[
@@ -508,6 +593,130 @@ export default function ProgressScreen() {
             )}
           </>
         )}
+
+        {/* ===== SEMANA TAB ===== */}
+        {tab === 'semana' && (
+          <>
+            <SectionLabel>Últimos 7 días</SectionLabel>
+            <View
+              style={[
+                styles.listCard,
+                {
+                  backgroundColor: theme.bg2,
+                  borderColor: theme.border,
+                  borderRadius: RADII.r2,
+                  marginHorizontal: 20,
+                  marginBottom: 14,
+                  overflow: 'hidden',
+                },
+              ]}
+            >
+              {weekDays.map((day, i) => {
+                const waterDone = day.totalMl >= WATER_TARGET_ML;
+                const kcalDone = day.kcal >= KCAL_THRESHOLD;
+                const proteinDone = day.proteina >= PROTEIN_TARGET;
+                const waterPct = Math.min(1, day.totalMl / WATER_TARGET_ML);
+                const kcalPct = Math.min(1, day.kcal / KCAL_THRESHOLD);
+                const proteinPct = Math.min(1, day.proteina / PROTEIN_TARGET);
+
+                return (
+                  <View
+                    key={day.fecha}
+                    style={[
+                      styles.weekRow,
+                      {
+                        borderBottomColor: theme.border,
+                        borderBottomWidth: i < weekDays.length - 1 ? 1 : 0,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.weekDayLabel, { color: theme.text2 }]}>
+                      {dayLabel(day.fecha)}
+                    </Text>
+
+                    {/* Water */}
+                    <View style={styles.weekMetric}>
+                      <View style={styles.weekMetricHead}>
+                        <Text style={[styles.weekMetricLabel, { color: theme.text3 }]}>Agua</Text>
+                        <Text
+                          style={[
+                            styles.weekMetricVal,
+                            { color: waterDone ? SEMANTIC.green : theme.text2 },
+                          ]}
+                        >
+                          {waterDone ? '✓' : `${(day.totalMl / 1000).toFixed(1)} L`}
+                        </Text>
+                      </View>
+                      <View style={[styles.weekBarTrack, { backgroundColor: theme.bg4 }]}>
+                        <View
+                          style={[
+                            styles.weekBarFill,
+                            {
+                              backgroundColor: waterDone ? SEMANTIC.green : MACRO_COLORS.carbs,
+                              width: `${waterPct * 100}%` as `${number}%`,
+                            },
+                          ]}
+                        />
+                      </View>
+                    </View>
+
+                    {/* Kcal */}
+                    <View style={styles.weekMetric}>
+                      <View style={styles.weekMetricHead}>
+                        <Text style={[styles.weekMetricLabel, { color: theme.text3 }]}>Kcal</Text>
+                        <Text
+                          style={[
+                            styles.weekMetricVal,
+                            { color: kcalDone ? SEMANTIC.green : theme.text2 },
+                          ]}
+                        >
+                          {kcalDone ? '✓' : Math.round(day.kcal)}
+                        </Text>
+                      </View>
+                      <View style={[styles.weekBarTrack, { backgroundColor: theme.bg4 }]}>
+                        <View
+                          style={[
+                            styles.weekBarFill,
+                            {
+                              backgroundColor: kcalDone ? SEMANTIC.green : theme.accent,
+                              width: `${kcalPct * 100}%` as `${number}%`,
+                            },
+                          ]}
+                        />
+                      </View>
+                    </View>
+
+                    {/* Protein */}
+                    <View style={styles.weekMetric}>
+                      <View style={styles.weekMetricHead}>
+                        <Text style={[styles.weekMetricLabel, { color: theme.text3 }]}>Prot.</Text>
+                        <Text
+                          style={[
+                            styles.weekMetricVal,
+                            { color: proteinDone ? SEMANTIC.green : theme.text2 },
+                          ]}
+                        >
+                          {proteinDone ? '✓' : `${Math.round(day.proteina)}g`}
+                        </Text>
+                      </View>
+                      <View style={[styles.weekBarTrack, { backgroundColor: theme.bg4 }]}>
+                        <View
+                          style={[
+                            styles.weekBarFill,
+                            {
+                              backgroundColor: proteinDone ? SEMANTIC.green : MACRO_COLORS.protein,
+                              width: `${proteinPct * 100}%` as `${number}%`,
+                            },
+                          ]}
+                        />
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </>
+        )}
       </ScrollView>
 
       {/* Log metric modal */}
@@ -561,6 +770,14 @@ const styles = StyleSheet.create({
   btnWrap: { paddingHorizontal: 20, paddingBottom: 14 },
   listCard: { borderWidth: 1 },
   listRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 11 },
+  weekRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
+  weekDayLabel: { fontSize: 13, fontWeight: '700', width: 44 },
+  weekMetric: { flex: 1, gap: 4 },
+  weekMetricHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  weekMetricLabel: { fontSize: 11, fontWeight: '500' },
+  weekMetricVal: { fontSize: 12, fontWeight: '700' },
+  weekBarTrack: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  weekBarFill: { height: '100%', borderRadius: 2 },
   listDate: { fontSize: 13, fontWeight: '500' },
   listValue: { fontSize: 15, fontWeight: '700' },
   pillsRow: { paddingHorizontal: 20, paddingBottom: 14, gap: 6 },

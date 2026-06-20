@@ -119,8 +119,8 @@ export function useMetrics(): UseMetricsReturn {
     const resolvedWeightTrend = trendDirection(resolvedWeightAvg, resolvedPrevAvg);
 
     // 7. Load strength exercises (only those with at least one completed set)
-    const exerciseRows = await db.getAllAsync<{ id: number; nombre: string }>(
-      `SELECT DISTINCT e.id, e.nombre
+    const exerciseRows = await db.getAllAsync<{ id: number; nombre: string; usa_placas: number }>(
+      `SELECT DISTINCT e.id, e.nombre, e.usa_placas
        FROM exercises e
        JOIN set_logs sl ON sl.exercise_id = e.id
        WHERE sl.completada = 1
@@ -129,6 +129,7 @@ export function useMetrics(): UseMetricsReturn {
     const resolvedExercises: StrengthExercise[] = exerciseRows.map((r) => ({
       id: r.id,
       nombre: r.nombre,
+      usaPlacas: r.usa_placas === 1,
     }));
 
     // 8. Load strength data: max peso_kg per ISO week per exercise

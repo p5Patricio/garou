@@ -22,6 +22,8 @@ export interface UiExercise {
   descansoSeg: number;
   notasTecnica: string | null;
   esBodyweight: boolean;
+  /** usa_placas — show weight in plate counts instead of kg for this exercise. */
+  usaPlacas: boolean;
 }
 
 /**

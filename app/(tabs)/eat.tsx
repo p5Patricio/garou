@@ -275,6 +275,12 @@ export default function EatScreen() {
                   </Text>
                 </TouchableOpacity>
               ))}
+
+              {hasEntries ? (
+                <Text style={[styles.removeHint, { color: theme.text4 }]}>
+                  Mantén presionado un alimento para eliminarlo
+                </Text>
+              ) : null}
             </View>
           );
         })}
@@ -433,6 +439,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     minHeight: 48,
   },
+  removeHint: { fontSize: 11, textAlign: 'center', paddingVertical: 8, fontStyle: 'italic' },
   comidaItemDot: { width: 6, height: 6, borderRadius: 3, flexShrink: 0 },
   comidaItemName: { flex: 1, fontSize: 13 },
   comidaItemGrams: { fontSize: 12 },
