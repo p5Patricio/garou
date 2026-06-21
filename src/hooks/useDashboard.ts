@@ -85,6 +85,7 @@ export function useDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
 
   const refresh = useCallback(async () => {
+    await initDB();
     const db = getDB();
     const todayStr = todayLocal();
 

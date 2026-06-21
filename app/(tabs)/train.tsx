@@ -19,7 +19,7 @@ import RestTimerBar from '../../src/components/RestTimerBar';
 import BtnPrimary from '../../src/components/BtnPrimary';
 import Icon from '../../src/components/Icon';
 import { useWorkout } from '../../src/hooks/useWorkout';
-import { getDB } from '../../src/db';
+import { initDB, getDB } from '../../src/db';
 import ExerciseHistoryScreen from '../../src/screens/ExerciseHistoryScreen';
 
 // expo-notifications is unavailable in Expo Go on Android (SDK 53+). Use require so
@@ -115,6 +115,7 @@ export default function TrainScreen() {
   const [expanded, setExpanded] = useState<Expanded | null>(null);
   const [restTimer, setRestTimer] = useState<RestTimer>({ active: false, remaining: 0, total: 0, nombre: '', endTime: 0 });
   const [elapsed, setElapsed] = useState(0);
+  const [sessionStarted, setSessionStarted] = useState(false);
   const [historyModal, setHistoryModal] = useState<HistoryModal | null>(null);
   const notifIdRef = useRef<string | null>(null);
 
@@ -128,6 +129,7 @@ export default function TrainScreen() {
 
   const loadCardio = useCallback(async () => {
     try {
+      await initDB(); // ensures DB is ready — idempotent, safe to call multiple times
       const db = getDB();
       const rows = await db.getAllAsync<CardioLog>(
         `SELECT id, tipo, minutos, fc_promedio_ppm, zona
@@ -197,11 +199,12 @@ export default function TrainScreen() {
     });
   }, []);
 
-  // Session elapsed clock
+  // Session elapsed clock — only runs once the user confirms their first set
   useEffect(() => {
+    if (!sessionStarted) return;
     const t = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [sessionStarted]);
 
   // Rest timer countdown
   useEffect(() => {
@@ -301,6 +304,11 @@ export default function TrainScreen() {
 
     // UPSERT to DB
     await completeSet(exId, setIdx, { ...currentSet, done: true });
+
+    // Start the elapsed clock on the first confirmed set of this session
+    if (!sessionStarted) {
+      setSessionStarted(true);
+    }
 
     // Advance expanded to next undone set or next exercise
     const nextIdx = setIdx + 1;
