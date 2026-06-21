@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useFocusEffect } from 'expo-router';
 import {
   initialize,
   requestPermission,
@@ -40,8 +39,6 @@ export function useWatch(): UseWatchReturn {
   // Guard against concurrent syncs (mirrors useBackup pattern)
   const isRunning = useRef(false);
   const initialized = useRef(false);
-  // Skip the very first focus so sync() doesn't fire before initHC() has run
-  const mountedRef = useRef(false);
 
   // --------------------------------------------------------------------------
   // sync — read last 24h from Health Connect, upsert watch_daily, re-read row
@@ -206,18 +203,11 @@ export function useWatch(): UseWatchReturn {
     return () => { cancelled = true; };
   }, []);
 
-  // --------------------------------------------------------------------------
-  // Sync on every tab focus (auto-refresh — mirrors useMetrics pattern)
-  // --------------------------------------------------------------------------
-  useFocusEffect(
-    useCallback(() => {
-      if (!mountedRef.current) {
-        mountedRef.current = true;
-        return; // skip first focus — sync runs from the explicit mount effect if needed
-      }
-      sync().catch((err) => console.error('[useWatch] focus sync error', err));
-    }, [sync])
-  );
+  // NOTE: Watch sync is MANUAL only (via the "Sync reloj" button), never on
+  // tab focus. sync() calls react-native-health-connect's requestPermission,
+  // which launches a native Android Activity. Auto-firing that on every focus
+  // crashed the production APK when returning to the Hoy tab. Health Connect is
+  // Phase 5 and must not be invoked implicitly by navigation.
 
   return { data, loading, lastSyncAt, sync };
 }
