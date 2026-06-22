@@ -2,12 +2,23 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   initialize,
   requestPermission,
+  getGrantedPermissions,
   readRecords,
   getSdkStatus,
   SdkAvailabilityStatus,
 } from 'react-native-health-connect';
+import type { Permission } from 'react-native-health-connect';
 import { initDB } from '../db';
 import type { WatchDailyRow, UseWatchReturn } from '../types/watch';
+
+// READ permissions this app needs from Health Connect.
+const REQUIRED_PERMISSIONS: Permission[] = [
+  { accessType: 'read', recordType: 'Steps' },
+  { accessType: 'read', recordType: 'HeartRate' },
+  { accessType: 'read', recordType: 'HeartRateVariabilityRmssd' },
+  { accessType: 'read', recordType: 'SleepSession' },
+  { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
+];
 
 // ---------------------------------------------------------------------------
 // Helper
@@ -49,17 +60,27 @@ export function useWatch(): UseWatchReturn {
     setLoading(true);
 
     try {
-      // 1. Abort if HC wasn't initialized on mount (not available on this device)
+      // 1. Ensure the Health Connect client is initialized. initialize() is
+      // idempotent; it returns false when HC is unavailable on this device.
+      if (!initialized.current) {
+        initialized.current = await initialize();
+      }
       if (!initialized.current) return;
 
-      // 2. Request READ permissions for all four data types
-      await requestPermission([
-        { accessType: 'read', recordType: 'Steps' },
-        { accessType: 'read', recordType: 'HeartRate' },
-        { accessType: 'read', recordType: 'HeartRateVariabilityRmssd' },
-        { accessType: 'read', recordType: 'SleepSession' },
-        { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
-      ]);
+      // 2. Request READ permissions only for types not already granted, so the
+      // native permission dialog isn't launched on every sync.
+      const granted = await getGrantedPermissions();
+      const grantedSet = new Set(
+        granted
+          .filter((g): g is Permission => 'recordType' in g && 'accessType' in g)
+          .map((g) => `${g.accessType}:${g.recordType}`)
+      );
+      const missing = REQUIRED_PERMISSIONS.filter(
+        (p) => !grantedSet.has(`${p.accessType}:${p.recordType}`)
+      );
+      if (missing.length > 0) {
+        await requestPermission(missing);
+      }
 
       const timeRangeFilter = {
         operator: 'between' as const,
