@@ -437,17 +437,32 @@ export default function TrainScreen() {
                         <Text style={[styles.exChipNeutral, { color: theme.text3 }]}>{ex.grupoMuscular}</Text>
                       </View>
                       {!ex.esBodyweight && (
-                        <TouchableOpacity
-                          onPress={() => togglePlacas(ex.id)}
-                          style={[styles.unitChip, { backgroundColor: theme.bg4, borderColor: theme.border2 }]}
-                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                          accessibilityLabel={`Cambiar unidad de ${ex.nombre} a ${ex.usaPlacas ? 'kilogramos' : 'placas'}`}
-                          accessibilityRole="button"
-                        >
-                          <Text style={[styles.unitChipText, { color: theme.text2 }]}>
-                            {ex.usaPlacas ? 'placas' : 'kg'}
-                          </Text>
-                        </TouchableOpacity>
+                        <View style={[styles.unitToggle, { backgroundColor: theme.bg4, borderColor: theme.border2 }]}>
+                          <TouchableOpacity
+                            onPress={() => { if (ex.usaPlacas) togglePlacas(ex.id); }}
+                            style={[styles.unitSeg, !ex.usaPlacas && { backgroundColor: theme.accent }]}
+                            hitSlop={{ top: 10, bottom: 10, left: 2, right: 2 }}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: !ex.usaPlacas }}
+                            accessibilityLabel={`Registrar ${ex.nombre} en kilogramos`}
+                          >
+                            <Text style={[styles.unitSegText, { color: !ex.usaPlacas ? '#fff' : theme.text3 }]}>
+                              kg
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => { if (!ex.usaPlacas) togglePlacas(ex.id); }}
+                            style={[styles.unitSeg, ex.usaPlacas && { backgroundColor: theme.accent }]}
+                            hitSlop={{ top: 10, bottom: 10, left: 2, right: 2 }}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: ex.usaPlacas }}
+                            accessibilityLabel={`Registrar ${ex.nombre} en placas`}
+                          >
+                            <Text style={[styles.unitSegText, { color: ex.usaPlacas ? '#fff' : theme.text3 }]}>
+                              placas
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
                       )}
                     </View>
                   </View>
@@ -725,8 +740,9 @@ const styles = StyleSheet.create({
   exChip: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
   exChipAccent: { fontSize: 11, fontWeight: '600' },
   exChipNeutral: { fontSize: 11, fontWeight: '600' },
-  unitChip: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 5, borderWidth: 1, minHeight: 24 },
-  unitChipText: { fontSize: 11, fontWeight: '700' },
+  unitToggle: { flexDirection: 'row', borderRadius: 6, borderWidth: 1, overflow: 'hidden', minHeight: 26 },
+  unitSeg: { paddingHorizontal: 11, paddingVertical: 3, alignItems: 'center', justifyContent: 'center', minHeight: 24 },
+  unitSegText: { fontSize: 11, fontWeight: '700' },
   exHeaderRight: { alignItems: 'flex-end', flexShrink: 0, marginLeft: 8 },
   exLastLabel: { fontSize: 11, marginBottom: 1 },
   exLastValue: { fontSize: 13, fontWeight: '700' },
