@@ -19,6 +19,7 @@ import RestTimerBar from '../../src/components/RestTimerBar';
 import BtnPrimary from '../../src/components/BtnPrimary';
 import Icon from '../../src/components/Icon';
 import { useWorkout } from '../../src/hooks/useWorkout';
+import { SESSION_ROTATION } from '../../src/utils/sessionRotation';
 import { initDB, getDB } from '../../src/db';
 import ExerciseHistoryScreen from '../../src/screens/ExerciseHistoryScreen';
 
@@ -107,8 +108,12 @@ export default function TrainScreen() {
     completeSet,
     updateSet,
     finishSession,
+    selectSession,
+    markRestDay,
+    undoRestDay,
     togglePlacas,
     tipoSesion,
+    estado,
   } = useWorkout();
 
   // --- Ephemeral UI state -------------------------------------------------
@@ -116,6 +121,7 @@ export default function TrainScreen() {
   const [restTimer, setRestTimer] = useState<RestTimer>({ active: false, remaining: 0, total: 0, nombre: '', endTime: 0 });
   const [elapsed, setElapsed] = useState(0);
   const [sessionStarted, setSessionStarted] = useState(false);
+  const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
   const [historyModal, setHistoryModal] = useState<HistoryModal | null>(null);
   const notifIdRef = useRef<string | null>(null);
 
@@ -332,15 +338,53 @@ export default function TrainScreen() {
   };
 
   const handleFinishSession = () => {
+    const msg = sessionComplete
+      ? '¿Terminaste el entrenamiento? Esto marcará la sesión como completada.'
+      : 'Hay ejercicios sin completar. ¿Terminar la rutina igual? Se guardará lo que registraste y contará como sesión hecha.';
+    Alert.alert('Terminar rutina', msg, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Terminar', style: 'default', onPress: () => finishSession() },
+    ]);
+  };
+
+  const handleMarkRest = () => {
     Alert.alert(
-      'Finalizar sesión',
-      '¿Terminaste el entrenamiento? Esto marcará la sesión como completada.',
+      'No fui al gym',
+      '¿Marcar hoy como día de descanso? No avanza la rotación de la rutina.',
       [
         { text: 'Cancelar', style: 'cancel' },
-        { text: 'Finalizar', style: 'default', onPress: () => finishSession() },
+        { text: 'Sí, descanso', style: 'default', onPress: () => markRestDay() },
       ]
     );
   };
+
+  const handleSelectSession = (tipo: string) => {
+    setSessionPickerOpen(false);
+    if (tipo === tipoSesion && estado !== 'descanso') return;
+    if (estado === 'pendiente') {
+      Alert.alert(
+        'Cambiar sesión',
+        'Vas a cambiar de sesión. Se descartará lo que registraste hoy. ¿Continuar?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Cambiar', style: 'destructive', onPress: () => selectSession(tipo) },
+        ]
+      );
+    } else {
+      selectSession(tipo);
+    }
+  };
+
+  // Estado label + accent for the header
+  const ESTADO_META: Record<string, { label: string; tone: 'accent' | 'green' | 'muted' }> = {
+    sugerida: { label: 'Sugerida hoy', tone: 'accent' },
+    pendiente: { label: 'En curso', tone: 'accent' },
+    completada: { label: 'Completada', tone: 'green' },
+    descanso: { label: 'Día de descanso', tone: 'muted' },
+  };
+  const estadoMeta = ESTADO_META[estado] ?? ESTADO_META.sugerida;
+  const estadoColor =
+    estadoMeta.tone === 'green' ? SEMANTIC.green : estadoMeta.tone === 'muted' ? theme.text3 : theme.accent;
 
   // --- Loading guard ------------------------------------------------------
   if (loading) {
@@ -364,25 +408,71 @@ export default function TrainScreen() {
         >
           {/* Session header */}
           <View style={styles.header}>
-            <View>
-              <Text style={[styles.enCurso, { color: theme.accent }]}>En curso</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.enCurso, { color: estadoColor }]}>{estadoMeta.label}</Text>
               <Text style={[styles.sessionName, { color: theme.text1 }]}>{tipoSesion.toUpperCase()}</Text>
             </View>
-            <View style={styles.elapsedWrap}>
-              <Text style={[styles.elapsedTime, { color: theme.text1 }]}>{elapsedLabel}</Text>
-              <Text style={[styles.seriesCount, { color: theme.text3 }]}>{doneSeries}/{totalSeries} series</Text>
-            </View>
+            {estado !== 'descanso' && (
+              <View style={styles.elapsedWrap}>
+                <Text style={[styles.elapsedTime, { color: theme.text1 }]}>{elapsedLabel}</Text>
+                <Text style={[styles.seriesCount, { color: theme.text3 }]}>{doneSeries}/{totalSeries} series</Text>
+              </View>
+            )}
           </View>
 
+          {/* Session controls — change session / mark rest day */}
+          {estado !== 'completada' && (
+            <View style={styles.sessionControls}>
+              <TouchableOpacity
+                onPress={() => setSessionPickerOpen(true)}
+                style={[styles.ctrlBtn, { backgroundColor: theme.bg3, borderColor: theme.border }]}
+                accessibilityLabel="Cambiar la sesión de hoy"
+                accessibilityRole="button"
+              >
+                <Text style={[styles.ctrlBtnText, { color: theme.text2 }]}>Cambiar sesión</Text>
+              </TouchableOpacity>
+              {estado === 'descanso' ? (
+                <TouchableOpacity
+                  onPress={() => undoRestDay()}
+                  style={[styles.ctrlBtn, { backgroundColor: theme.bg3, borderColor: theme.border }]}
+                  accessibilityLabel="Deshacer el día de descanso"
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.ctrlBtnText, { color: theme.text2 }]}>Deshacer descanso</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={handleMarkRest}
+                  style={[styles.ctrlBtn, { backgroundColor: theme.bg3, borderColor: theme.border }]}
+                  accessibilityLabel="Marcar que hoy no fui al gym"
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.ctrlBtnText, { color: theme.text2 }]}>No fui al gym</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {/* Rest day banner */}
+          {estado === 'descanso' && (
+            <View style={[styles.restBanner, { backgroundColor: theme.bg2, borderColor: theme.border }]}>
+              <Icon name="moon" size={28} color={theme.text3} strokeW={1.6} />
+              <Text style={[styles.restBannerTitle, { color: theme.text1 }]}>Hoy es día de descanso</Text>
+              <Text style={[styles.restBannerSub, { color: theme.text3 }]}>
+                No avanza la rotación. La próxima sesión sigue siendo {tipoSesion}.
+              </Text>
+            </View>
+          )}
+
           {/* Progress bar */}
-          {totalSeries > 0 && (
+          {estado !== 'descanso' && totalSeries > 0 && (
             <View style={[styles.progressTrack, { backgroundColor: theme.bg4, marginHorizontal: 20, marginBottom: 4 }]}>
               <View style={[styles.progressFill, { backgroundColor: theme.accent, width: `${(doneSeries / totalSeries) * 100}%` as `${number}%` }]} />
             </View>
           )}
 
           {/* Exercise cards */}
-          {exercises.map((ex) => {
+          {estado !== 'descanso' && exercises.map((ex) => {
             const exSets = sets[ex.id] ?? {};
             const isActive = expanded?.exId === ex.id;
             const progression = progressionByExercise[ex.id];
@@ -564,11 +654,12 @@ export default function TrainScreen() {
             );
           })}
 
-          {/* Finish session button — shown when all sets done */}
-          {sessionComplete && (
+          {/* Finish button — available throughout an in-progress session so the
+              user can end early (machine busy, has to leave). */}
+          {estado === 'pendiente' && (
             <View style={{ marginHorizontal: 20, marginTop: 8, marginBottom: 16 }}>
               <BtnPrimary onPress={handleFinishSession} icon="check">
-                Finalizar sesión
+                {sessionComplete ? 'Finalizar sesión' : 'Terminar rutina'}
               </BtnPrimary>
             </View>
           )}
@@ -708,6 +799,42 @@ export default function TrainScreen() {
           onClose={() => setHistoryModal(null)}
         />
       )}
+
+      {/* Session picker modal */}
+      <Modal
+        visible={sessionPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSessionPickerOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setSessionPickerOpen(false)}
+        >
+          <View style={[styles.pickerCard, { backgroundColor: theme.bg2, borderColor: theme.border }]}>
+            <Text style={[styles.pickerTitle, { color: theme.text1 }]}>Elegir sesión de hoy</Text>
+            {SESSION_ROTATION.map((t) => {
+              const active = t === tipoSesion;
+              return (
+                <TouchableOpacity
+                  key={t}
+                  onPress={() => handleSelectSession(t)}
+                  style={[styles.pickerRow, { borderColor: theme.border }]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`Sesión ${t}`}
+                >
+                  <Text style={[styles.pickerRowText, { color: active ? theme.accent : theme.text2 }]}>
+                    {t}
+                  </Text>
+                  {active && <Icon name="check" size={18} color={theme.accent} strokeW={2} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -727,6 +854,47 @@ const styles = StyleSheet.create({
   elapsedWrap: { alignItems: 'flex-end' },
   elapsedTime: { fontSize: 20, fontWeight: '800', letterSpacing: -0.4 },
   seriesCount: { fontSize: 12, marginTop: 1 },
+  sessionControls: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, marginBottom: 10 },
+  ctrlBtn: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  ctrlBtnText: { fontSize: 13, fontWeight: '600' },
+  restBanner: {
+    marginHorizontal: 20,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    gap: 8,
+  },
+  restBannerTitle: { fontSize: 17, fontWeight: '700', marginTop: 4 },
+  restBannerSub: { fontSize: 13, textAlign: 'center', lineHeight: 18 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 28,
+  },
+  pickerCard: { width: '100%', maxWidth: 360, borderWidth: 1, borderRadius: 16, padding: 8, paddingTop: 14 },
+  pickerTitle: { fontSize: 16, fontWeight: '800', paddingHorizontal: 14, marginBottom: 8 },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 52,
+    paddingHorizontal: 14,
+    borderTopWidth: 1,
+  },
+  pickerRowText: { fontSize: 16, fontWeight: '600' },
   progressTrack: { height: 4, borderRadius: 2, overflow: 'hidden', marginTop: 10, marginBottom: 10 },
   progressFill: { height: '100%', borderRadius: 2 },
   exCard: { borderWidth: 1, overflow: 'hidden' },

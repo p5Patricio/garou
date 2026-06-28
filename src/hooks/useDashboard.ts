@@ -2,17 +2,26 @@ import { useState, useEffect, useCallback } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { initDB, getDB } from '../db';
 import { weeklyAverage } from '../utils/stats';
-import { resolveSessionType } from '../utils/sessionRotation';
+import {
+  resolveTodaySession,
+  rotationIndexOf,
+  SESSION_ROTATION,
+  type SessionEstado,
+} from '../utils/sessionRotation';
 
 export interface DashboardData {
   fecha: string; // E.g. "Mié, 17 jun"
   workout: {
     session: string;
+    estado: SessionEstado;
     completed: boolean;
+    esDescanso: boolean;
     numEjercicios: number;
     numSeries: number;
     duracionEstimada: number;
     musclesLabel: string;
+    rotation: string[];
+    rotationIndex: number;
   };
   macros: {
     logHoy: {
@@ -128,14 +137,12 @@ export function useDashboard() {
     };
 
     // 4. Workout session today / rotation
-    const resolvedSessionType = await resolveSessionType(db);
-
-    // Determine whether today's session (if any) is already completed
-    const sessionToday = await db.getFirstAsync<{ completada: number }>(
-      `SELECT completada FROM workout_sessions WHERE fecha = ? LIMIT 1`,
-      [todayStr]
-    );
-    const completed = sessionToday?.completada === 1;
+    const todaySession = await resolveTodaySession(db);
+    const resolvedSessionType = todaySession.tipo;
+    const estado = todaySession.estado;
+    const completed = estado === 'completada';
+    const esDescanso = estado === 'descanso';
+    const rotationIndex = rotationIndexOf(resolvedSessionType);
 
     // Query exercises for the resolved session
     const exercises = await db.getAllAsync<{
@@ -163,11 +170,15 @@ export function useDashboard() {
 
     const workout = {
       session: resolvedSessionType,
+      estado,
       completed,
+      esDescanso,
       numEjercicios,
       numSeries,
       duracionEstimada,
       musclesLabel,
+      rotation: [...SESSION_ROTATION],
+      rotationIndex,
     };
 
     // 5. Daily targets based on completed workout today

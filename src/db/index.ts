@@ -13,7 +13,7 @@ async function migrateDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
   );
   const currentVersion = versionRow?.user_version ?? 0;
 
-  if (currentVersion >= 6) return;
+  if (currentVersion >= 7) return;
 
   if (currentVersion < 1) {
   // Migration 1: add UNIQUE(session_id, exercise_id, num_serie) to set_logs
@@ -126,6 +126,16 @@ async function migrateDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     'ALTER TABLE exercises ADD COLUMN usa_placas INTEGER NOT NULL DEFAULT 0;'
   );
   await db.execAsync('PRAGMA user_version = 6;');
+  }
+
+  if (currentVersion < 7) {
+  // Migration 7: add es_descanso to workout_sessions so a day can be marked as
+  // a rest day ("didn't go to the gym"). Rest days do not advance the routine
+  // rotation. ALTER TABLE ADD COLUMN is atomic — no transaction needed.
+  await db.execAsync(
+    'ALTER TABLE workout_sessions ADD COLUMN es_descanso INTEGER NOT NULL DEFAULT 0;'
+  );
+  await db.execAsync('PRAGMA user_version = 7;');
   }
 }
 

@@ -17,8 +17,28 @@ import SectionLabel from '../../src/components/SectionLabel';
 import { useWatch } from '../../src/hooks/useWatch';
 import { useDashboard } from '../../src/hooks/useDashboard';
 
-const WEEK_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-const WEEK_SESSIONS = ['T.A', 'P.A', 'Lig', '—', 'T.B', 'P.B', '—'];
+// Short labels for the rotation strip
+const ROTATION_ABBR: Record<string, string> = {
+  'Torso A': 'T.A',
+  'Pierna A': 'P.A',
+  Ligero: 'Lig',
+  'Torso B': 'T.B',
+  'Pierna B': 'P.B',
+};
+
+const ESTADO_TAG: Record<string, string> = {
+  sugerida: 'Sugerida hoy',
+  pendiente: 'En curso',
+  completada: 'Completada',
+  descanso: 'Día de descanso',
+};
+
+const START_LABEL: Record<string, string> = {
+  sugerida: 'Empezar',
+  pendiente: 'Continuar',
+  completada: 'Ver',
+  descanso: 'Descanso',
+};
 
 export default function HoyScreen() {
   const { theme } = useTheme();
@@ -50,11 +70,11 @@ export default function HoyScreen() {
     ? `Última sync: ${lastSyncAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
     : 'Sin datos';
 
-  const getLocalDayIndex = () => {
-    const day = new Date().getDay();
-    return day === 0 ? 6 : day - 1;
-  };
-  const todayIndex = getLocalDayIndex();
+  const wk = dashboardData.workout;
+  const estadoTag = ESTADO_TAG[wk.estado] ?? 'Sesión de hoy';
+  const startLabel = START_LABEL[wk.estado] ?? 'Empezar';
+  const estadoTone =
+    wk.estado === 'completada' ? SEMANTIC.green : wk.estado === 'descanso' ? theme.text3 : theme.accent;
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={['top']}>
@@ -67,15 +87,15 @@ export default function HoyScreen() {
         <View style={[styles.card, { backgroundColor: theme.bg2, borderColor: theme.border, borderRadius: RADII.r3, marginHorizontal: 20, marginBottom: 14 }]}>
           <View style={styles.sessionTop}>
             <View style={styles.sessionDot}>
-              <View style={[styles.dot, { backgroundColor: theme.accent }]} />
-              <Text style={[styles.sessionTag, { color: theme.accent }]}>Sesión de hoy</Text>
+              <View style={[styles.dot, { backgroundColor: estadoTone }]} />
+              <Text style={[styles.sessionTag, { color: estadoTone }]}>{estadoTag}</Text>
             </View>
             <View style={styles.sessionBody}>
               <View style={styles.sessionInfo}>
-                <Text style={[styles.sessionName, { color: theme.text1 }]}>{dashboardData.workout.session.toUpperCase()}</Text>
-                <Text style={[styles.sessionSub, { color: theme.text3 }]}>{dashboardData.workout.musclesLabel}</Text>
+                <Text style={[styles.sessionName, { color: theme.text1 }]}>{wk.session.toUpperCase()}</Text>
+                <Text style={[styles.sessionSub, { color: theme.text3 }]}>{wk.musclesLabel}</Text>
                 <View style={styles.chips}>
-                  {[`${dashboardData.workout.numEjercicios} ejercicios`, `${dashboardData.workout.numSeries} series`, `~${dashboardData.workout.duracionEstimada} min`].map((t) => (
+                  {[`${wk.numEjercicios} ejercicios`, `${wk.numSeries} series`, `~${wk.duracionEstimada} min`].map((t) => (
                     <View key={t} style={[styles.chip, { backgroundColor: theme.bg3 }]}>
                       <Text style={[styles.chipText, { color: theme.text3 }]}>{t}</Text>
                     </View>
@@ -84,31 +104,37 @@ export default function HoyScreen() {
               </View>
               <TouchableOpacity
                 onPress={() => router.push('/(tabs)/train')}
-                style={[styles.startBtn, { backgroundColor: theme.accent, borderRadius: RADII.r2 }]}
+                style={[
+                  styles.startBtn,
+                  { backgroundColor: wk.estado === 'descanso' ? theme.bg3 : theme.accent, borderRadius: RADII.r2 },
+                ]}
+                accessibilityLabel={`${startLabel} ${wk.session}`}
               >
-                <Text style={styles.startBtnText}>Empezar</Text>
+                <Text style={[styles.startBtnText, wk.estado === 'descanso' && { color: theme.text2 }]}>
+                  {startLabel}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
           <View style={[styles.weekStrip, { borderTopColor: theme.border }]}>
-            {WEEK_SESSIONS.map((s, i) => {
-              const isToday = i === todayIndex;
-              const isPast = i < todayIndex;
+            {wk.rotation.map((s, i) => {
+              const isCurrent = i === wk.rotationIndex;
+              const abbr = ROTATION_ABBR[s] ?? s;
               return (
-                <View key={i} style={styles.weekDay}>
-                  <Text style={[styles.weekDayLabel, { color: isToday ? theme.accent : theme.text4 }]}>
-                    {WEEK_LABELS[i]}
+                <View key={s} style={styles.weekDay}>
+                  <Text style={[styles.weekDayLabel, { color: isCurrent ? theme.accent : theme.text4 }]}>
+                    {isCurrent ? 'hoy' : ''}
                   </Text>
                   <View style={[
                     styles.weekDayCircle,
                     {
-                      backgroundColor: isPast ? SEMANTIC.greenA : isToday ? theme.accentA : theme.bg3,
-                      borderColor: isToday ? theme.accent : 'transparent',
+                      backgroundColor: isCurrent ? theme.accentA : theme.bg3,
+                      borderColor: isCurrent ? theme.accent : 'transparent',
                     },
                   ]}>
                     <Text style={[styles.weekDaySession, {
-                      color: isPast ? SEMANTIC.green : isToday ? theme.accent : theme.text4,
-                    }]}>{s}</Text>
+                      color: isCurrent ? theme.accent : theme.text4,
+                    }]}>{abbr}</Text>
                   </View>
                 </View>
               );

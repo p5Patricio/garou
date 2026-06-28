@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { initDB, getDB } from '../db';
 import { isReadyToIncrease } from '../utils/progression';
-import { resolveSessionType } from '../utils/sessionRotation';
+import { resolveTodaySession, type SessionEstado, type TodaySession } from '../utils/sessionRotation';
 import type {
   UiExercise,
   SetState,
@@ -57,6 +57,7 @@ export interface UseWorkoutReturn {
   loading: boolean;
   sessionId: number | null;
   tipoSesion: string;
+  estado: SessionEstado;
   exercises: UiExercise[];
   sets: SetsMap;
   progressionByExercise: Record<number, ProgressionResult>;
@@ -64,6 +65,9 @@ export interface UseWorkoutReturn {
   completeSet: (exId: number, numSerie: number, state: SetState) => Promise<void>;
   updateSet: (exId: number, numSerie: number, field: keyof SetState, value: number | boolean) => void;
   finishSession: () => Promise<void>;
+  selectSession: (tipo: string) => Promise<void>;
+  markRestDay: () => Promise<void>;
+  undoRestDay: () => Promise<void>;
   togglePlacas: (exId: number) => Promise<void>;
 }
 
@@ -74,6 +78,7 @@ export interface UseWorkoutReturn {
 export function useWorkout(): UseWorkoutReturn {
   const [loading, setLoading] = useState(true);
   const [tipoSesion, setTipoSesion] = useState<string>('');
+  const [estado, setEstado] = useState<SessionEstado>('sugerida');
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [exercises, setExercises] = useState<UiExercise[]>([]);
   const [sets, setSets] = useState<SetsMap>({});
@@ -81,47 +86,6 @@ export function useWorkout(): UseWorkoutReturn {
 
   // Track session start time to compute duracion_min on finish
   const startTimeRef = useRef<number>(Date.now());
-
-  // --------------------------------------------------------------------------
-  // Session resolution: resume-or-create
-  // --------------------------------------------------------------------------
-  const resolveSession = useCallback(async (sessionType: string): Promise<number> => {
-    const db = getDB();
-    const fecha = today();
-
-    // Look for an incomplete session for today
-    const existing = await db.getFirstAsync<{ id: number }>(
-      `SELECT id FROM workout_sessions
-       WHERE fecha = ? AND tipo_sesion = ? AND completada = 0
-       LIMIT 1`,
-      [fecha, sessionType]
-    );
-
-    if (existing) {
-      return existing.id;
-    }
-
-    // Create a new session (INSERT OR IGNORE guards against duplicates)
-    await db.runAsync(
-      `INSERT OR IGNORE INTO workout_sessions (fecha, tipo_sesion, completada)
-       VALUES (?, ?, 0)`,
-      [fecha, sessionType]
-    );
-
-    const created = await db.getFirstAsync<{ id: number }>(
-      `SELECT id FROM workout_sessions
-       WHERE fecha = ? AND tipo_sesion = ? AND completada = 0
-       LIMIT 1`,
-      [fecha, sessionType]
-    );
-
-    if (!created) {
-      throw new Error('Failed to create workout session');
-    }
-
-    startTimeRef.current = Date.now();
-    return created.id;
-  }, []);
 
   // --------------------------------------------------------------------------
   // Load exercises for the session's tipo_sesion
@@ -154,10 +118,11 @@ export function useWorkout(): UseWorkoutReturn {
   }, []);
 
   // --------------------------------------------------------------------------
-  // Build initial SetsMap from prior session data + current session's logs
+  // Build initial SetsMap from prior session data + current session's logs.
+  // sessId may be null when no session row exists yet (lazy creation).
   // --------------------------------------------------------------------------
   const buildSetsMap = useCallback(
-    async (exs: UiExercise[], sessId: number): Promise<SetsMap> => {
+    async (exs: UiExercise[], sessId: number | null): Promise<SetsMap> => {
       const db = getDB();
       const setsMap: SetsMap = {};
 
@@ -178,7 +143,7 @@ export function useWorkout(): UseWorkoutReturn {
              AND ws.id <> ?
              AND sl.completada = 1
            ORDER BY ws.fecha DESC, sl.num_serie ASC`,
-          [ex.id, sessId]
+          [ex.id, sessId ?? -1]
         );
 
         // Build a map of the most recent weight/reps per serie index
@@ -194,24 +159,26 @@ export function useWorkout(): UseWorkoutReturn {
           }
         }
 
-        // Check if this session already has logged sets (auto-resume)
-        const currentRows = await db.getAllAsync<{
-          num_serie: number;
-          peso_kg: number;
-          reps: number;
-          rir_real: number | null;
-          completada: number;
-        }>(
-          `SELECT num_serie, peso_kg, reps, rir_real, completada
-           FROM set_logs
-           WHERE session_id = ? AND exercise_id = ?
-           ORDER BY num_serie ASC`,
-          [sessId, ex.id]
-        );
-
+        // Check if this session already has logged sets (auto-resume).
+        // Skip entirely when there's no session row yet.
         const currentBySerie: Record<number, { peso_kg: number; reps: number; rir_real: number | null; completada: number }> = {};
-        for (const row of currentRows) {
-          currentBySerie[row.num_serie] = row;
+        if (sessId !== null) {
+          const currentRows = await db.getAllAsync<{
+            num_serie: number;
+            peso_kg: number;
+            reps: number;
+            rir_real: number | null;
+            completada: number;
+          }>(
+            `SELECT num_serie, peso_kg, reps, rir_real, completada
+             FROM set_logs
+             WHERE session_id = ? AND exercise_id = ?
+             ORDER BY num_serie ASC`,
+            [sessId, ex.id]
+          );
+          for (const row of currentRows) {
+            currentBySerie[row.num_serie] = row;
+          }
         }
 
         // Populate each set slot (num_serie is 0-indexed in the UI)
@@ -247,7 +214,7 @@ export function useWorkout(): UseWorkoutReturn {
   // Compute progression for all exercises
   // --------------------------------------------------------------------------
   const computeProgression = useCallback(
-    async (exs: UiExercise[], currentSessionId: number, sessionType: string): Promise<Record<number, ProgressionResult>> => {
+    async (exs: UiExercise[], currentSessionId: number | null, sessionType: string): Promise<Record<number, ProgressionResult>> => {
       const db = getDB();
       const result: Record<number, ProgressionResult> = {};
 
@@ -261,7 +228,7 @@ export function useWorkout(): UseWorkoutReturn {
              AND ws.id <> ?
            ORDER BY ws.fecha DESC
            LIMIT 2`,
-          [sessionType, currentSessionId]
+          [sessionType, currentSessionId ?? -1]
         );
 
         if (recentSessions.length < 2) {
@@ -297,6 +264,25 @@ export function useWorkout(): UseWorkoutReturn {
   );
 
   // --------------------------------------------------------------------------
+  // hydrate — load exercises/sets/progression for a resolved day state
+  // --------------------------------------------------------------------------
+  const hydrate = useCallback(
+    async (t: TodaySession): Promise<void> => {
+      const exs = await loadExercises(t.tipo);
+      const setsMap = await buildSetsMap(exs, t.sessionId);
+      const progression = await computeProgression(exs, t.sessionId, t.tipo);
+
+      setTipoSesion(t.tipo);
+      setEstado(t.estado);
+      setSessionId(t.sessionId);
+      setExercises(exs);
+      setSets(setsMap);
+      setProgressionByExercise(progression);
+    },
+    [loadExercises, buildSetsMap, computeProgression]
+  );
+
+  // --------------------------------------------------------------------------
   // Initial load
   // --------------------------------------------------------------------------
   useEffect(() => {
@@ -305,19 +291,8 @@ export function useWorkout(): UseWorkoutReturn {
     async function load() {
       try {
         await initDB();
-        const resolvedSession = await resolveSessionType(getDB());
-        const sessId = await resolveSession(resolvedSession);
-        const exs = await loadExercises(resolvedSession);
-        const setsMap = await buildSetsMap(exs, sessId);
-        const progression = await computeProgression(exs, sessId, resolvedSession);
-
-        if (!cancelled) {
-          setTipoSesion(resolvedSession);
-          setSessionId(sessId);
-          setExercises(exs);
-          setSets(setsMap);
-          setProgressionByExercise(progression);
-        }
+        const t = await resolveTodaySession(getDB());
+        if (!cancelled) await hydrate(t);
       } catch (err) {
         console.error('[useWorkout] load error', err);
       } finally {
@@ -327,15 +302,72 @@ export function useWorkout(): UseWorkoutReturn {
 
     load();
     return () => { cancelled = true; };
-  }, [resolveSession, loadExercises, buildSetsMap, computeProgression]);
+  }, [hydrate]);
 
   // --------------------------------------------------------------------------
-  // completeSet — UPSERT to DB, then update local state
+  // createTodaySession — lazily create today's pending row for a tipo
+  // --------------------------------------------------------------------------
+  const createTodaySession = useCallback(async (tipo: string): Promise<number> => {
+    const db = getDB();
+    const fecha = today();
+
+    const existing = await db.getFirstAsync<{ id: number }>(
+      `SELECT id FROM workout_sessions
+       WHERE fecha = ? AND tipo_sesion = ? AND completada = 0 AND es_descanso = 0
+       LIMIT 1`,
+      [fecha, tipo]
+    );
+    if (existing) return existing.id;
+
+    await db.runAsync(
+      `INSERT OR IGNORE INTO workout_sessions (fecha, tipo_sesion, completada, es_descanso)
+       VALUES (?, ?, 0, 0)`,
+      [fecha, tipo]
+    );
+    const created = await db.getFirstAsync<{ id: number }>(
+      `SELECT id FROM workout_sessions
+       WHERE fecha = ? AND tipo_sesion = ? AND completada = 0 AND es_descanso = 0
+       LIMIT 1`,
+      [fecha, tipo]
+    );
+    if (!created) throw new Error('Failed to create workout session');
+
+    startTimeRef.current = Date.now();
+    return created.id;
+  }, []);
+
+  // --------------------------------------------------------------------------
+  // clearTodayNonCompleted — remove today's pending/rest rows and their logs,
+  // leaving completed sessions (history) untouched.
+  // --------------------------------------------------------------------------
+  const clearTodayNonCompleted = useCallback(async (): Promise<void> => {
+    const db = getDB();
+    const fecha = today();
+    await db.runAsync(
+      `DELETE FROM set_logs
+       WHERE session_id IN (SELECT id FROM workout_sessions WHERE fecha = ? AND completada = 0)`,
+      [fecha]
+    );
+    await db.runAsync(
+      `DELETE FROM workout_sessions WHERE fecha = ? AND completada = 0`,
+      [fecha]
+    );
+  }, []);
+
+  // --------------------------------------------------------------------------
+  // completeSet — UPSERT to DB, then update local state.
+  // Lazily creates today's session row on the first logged set.
   // --------------------------------------------------------------------------
   const completeSet = useCallback(
     async (exId: number, numSerie: number, state: SetState): Promise<void> => {
-      if (sessionId === null) return;
       const db = getDB();
+
+      let sessId = sessionId;
+      if (sessId === null) {
+        sessId = await createTodaySession(tipoSesion);
+        setSessionId(sessId);
+        setEstado('pendiente');
+      }
 
       await db.runAsync(
         `INSERT INTO set_logs (session_id, exercise_id, num_serie, peso_kg, reps, rir_real, completada)
@@ -346,7 +378,7 @@ export function useWorkout(): UseWorkoutReturn {
            reps       = excluded.reps,
            rir_real   = excluded.rir_real,
            completada = excluded.completada`,
-        [sessionId, exId, numSerie, state.weight, state.reps, state.rir]
+        [sessId, exId, numSerie, state.weight, state.reps, state.rir]
       );
 
       setSets((prev) => ({
@@ -357,7 +389,7 @@ export function useWorkout(): UseWorkoutReturn {
         },
       }));
     },
-    [sessionId]
+    [sessionId, tipoSesion, createTodaySession]
   );
 
   // --------------------------------------------------------------------------
@@ -381,6 +413,7 @@ export function useWorkout(): UseWorkoutReturn {
   // --------------------------------------------------------------------------
   const sessionComplete =
     !loading &&
+    estado !== 'descanso' &&
     exercises.length > 0 &&
     exercises.every((ex) => {
       const exSets = sets[ex.id];
@@ -389,7 +422,8 @@ export function useWorkout(): UseWorkoutReturn {
     });
 
   // --------------------------------------------------------------------------
-  // finishSession — mark workout_sessions.completada = 1 and record duration
+  // finishSession — mark completada = 1 (works even with unfinished exercises).
+  // No-op when nothing was logged (no session row yet).
   // --------------------------------------------------------------------------
   const finishSession = useCallback(async (): Promise<void> => {
     if (sessionId === null) return;
@@ -402,7 +436,52 @@ export function useWorkout(): UseWorkoutReturn {
        WHERE id = ?`,
       [elapsedMin, sessionId]
     );
+    setEstado('completada');
   }, [sessionId]);
+
+  // --------------------------------------------------------------------------
+  // selectSession — switch the day to a chosen session type. Discards today's
+  // in-progress (non-completed) work and starts the chosen one fresh.
+  // --------------------------------------------------------------------------
+  const selectSession = useCallback(
+    async (tipo: string): Promise<void> => {
+      await clearTodayNonCompleted();
+      startTimeRef.current = Date.now();
+      await hydrate({ tipo, estado: 'sugerida', sessionId: null });
+    },
+    [clearTodayNonCompleted, hydrate]
+  );
+
+  // --------------------------------------------------------------------------
+  // markRestDay — record today as a rest day ("didn't go to the gym").
+  // --------------------------------------------------------------------------
+  const markRestDay = useCallback(async (): Promise<void> => {
+    const db = getDB();
+    const fecha = today();
+    await clearTodayNonCompleted();
+
+    await db.runAsync(
+      `INSERT INTO workout_sessions (fecha, tipo_sesion, completada, es_descanso)
+       VALUES (?, ?, 0, 1)`,
+      [fecha, tipoSesion]
+    );
+    const rest = await db.getFirstAsync<{ id: number }>(
+      `SELECT id FROM workout_sessions
+       WHERE fecha = ? AND es_descanso = 1
+       ORDER BY id DESC LIMIT 1`,
+      [fecha]
+    );
+    await hydrate({ tipo: tipoSesion, estado: 'descanso', sessionId: rest?.id ?? null });
+  }, [clearTodayNonCompleted, hydrate, tipoSesion]);
+
+  // --------------------------------------------------------------------------
+  // undoRestDay — remove today's rest marker and return to the suggested state.
+  // --------------------------------------------------------------------------
+  const undoRestDay = useCallback(async (): Promise<void> => {
+    await clearTodayNonCompleted();
+    const t = await resolveTodaySession(getDB());
+    await hydrate(t);
+  }, [clearTodayNonCompleted, hydrate]);
 
   // --------------------------------------------------------------------------
   // togglePlacas — flip the kg/placas unit for one exercise, then refresh list
@@ -426,6 +505,7 @@ export function useWorkout(): UseWorkoutReturn {
     loading,
     sessionId,
     tipoSesion,
+    estado,
     exercises,
     sets,
     progressionByExercise,
@@ -433,6 +513,9 @@ export function useWorkout(): UseWorkoutReturn {
     completeSet,
     updateSet,
     finishSession,
+    selectSession,
+    markRestDay,
+    undoRestDay,
     togglePlacas,
   };
 }
