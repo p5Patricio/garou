@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -75,6 +76,11 @@ export default function HoyScreen() {
   const startLabel = START_LABEL[wk.estado] ?? 'Empezar';
   const estadoTone =
     wk.estado === 'completada' ? SEMANTIC.green : wk.estado === 'descanso' ? theme.text3 : theme.accent;
+
+  const handleSync = async () => {
+    const res = await sync();
+    Alert.alert('Sync reloj', res.message);
+  };
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={['top']}>
@@ -177,7 +183,7 @@ export default function HoyScreen() {
         <View style={[styles.syncRow, { paddingHorizontal: 20, marginBottom: 14 }]}>
           <Text style={[styles.syncLabel, { color: theme.text3 }]}>{syncLabel}</Text>
           <TouchableOpacity
-            onPress={sync}
+            onPress={handleSync}
             disabled={watchLoading}
             style={[
               styles.syncBtn,

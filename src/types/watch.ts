@@ -7,9 +7,15 @@ export interface WatchDailyRow {
   calorias_activas: number | null;
 }
 
+export interface SyncResult {
+  ok: boolean;
+  /** Human-readable outcome shown to the user after a manual sync. */
+  message: string;
+}
+
 export interface UseWatchReturn {
   data: WatchDailyRow | null;
   loading: boolean;
   lastSyncAt: Date | null;
-  sync(): Promise<void>;
+  sync(): Promise<SyncResult>;
 }

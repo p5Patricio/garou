@@ -9,7 +9,7 @@ import {
 } from 'react-native-health-connect';
 import type { Permission } from 'react-native-health-connect';
 import { initDB } from '../db';
-import type { WatchDailyRow, UseWatchReturn } from '../types/watch';
+import type { WatchDailyRow, UseWatchReturn, SyncResult } from '../types/watch';
 
 // READ permissions this app needs from Health Connect.
 const REQUIRED_PERMISSIONS: Permission[] = [
@@ -19,6 +19,17 @@ const REQUIRED_PERMISSIONS: Permission[] = [
   { accessType: 'read', recordType: 'SleepSession' },
   { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
 ];
+
+const permKey = (p: { accessType: string; recordType: string }) => `${p.accessType}:${p.recordType}`;
+
+// Build a set of "accessType:recordType" keys from a granted-permissions list.
+function grantedKeys(granted: unknown[]): Set<string> {
+  return new Set(
+    granted
+      .filter((g): g is Permission => !!g && typeof g === 'object' && 'recordType' in g && 'accessType' in g)
+      .map((g) => permKey(g))
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Helper
@@ -54,32 +65,51 @@ export function useWatch(): UseWatchReturn {
   // --------------------------------------------------------------------------
   // sync — read last 24h from Health Connect, upsert watch_daily, re-read row
   // --------------------------------------------------------------------------
-  const sync = useCallback(async (): Promise<void> => {
-    if (isRunning.current) return;
+  const sync = useCallback(async (): Promise<SyncResult> => {
+    if (isRunning.current) return { ok: false, message: 'Ya hay una sincronización en curso.' };
     isRunning.current = true;
     setLoading(true);
 
     try {
-      // 1. Ensure the Health Connect client is initialized. initialize() is
-      // idempotent; it returns false when HC is unavailable on this device.
-      if (!initialized.current) {
-        initialized.current = await initialize();
+      // 1. Availability — is Health Connect present on this device?
+      let status: number;
+      try {
+        status = await getSdkStatus();
+      } catch (e) {
+        return {
+          ok: false,
+          message:
+            'El módulo de Health Connect no está enlazado. Esto solo funciona en una build de EAS, no en Expo Go.',
+        };
       }
-      if (!initialized.current) return;
+      if (status !== SdkAvailabilityStatus.SDK_AVAILABLE) {
+        const detail =
+          status === SdkAvailabilityStatus.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED
+            ? 'Actualizá la app Health Connect desde Play Store.'
+            : 'Instalá o activá Health Connect en este teléfono.';
+        return { ok: false, message: `Health Connect no está disponible. ${detail}` };
+      }
 
-      // 2. Request READ permissions only for types not already granted, so the
-      // native permission dialog isn't launched on every sync.
-      const granted = await getGrantedPermissions();
-      const grantedSet = new Set(
-        granted
-          .filter((g): g is Permission => 'recordType' in g && 'accessType' in g)
-          .map((g) => `${g.accessType}:${g.recordType}`)
-      );
-      const missing = REQUIRED_PERMISSIONS.filter(
-        (p) => !grantedSet.has(`${p.accessType}:${p.recordType}`)
-      );
+      // 2. Initialize the client.
+      initialized.current = await initialize();
+      if (!initialized.current) {
+        return { ok: false, message: 'No se pudo inicializar Health Connect.' };
+      }
+
+      // 3. Request READ permissions for types not yet granted, then re-check.
+      let grantedSet = grantedKeys(await getGrantedPermissions());
+      const missing = REQUIRED_PERMISSIONS.filter((p) => !grantedSet.has(permKey(p)));
       if (missing.length > 0) {
         await requestPermission(missing);
+        grantedSet = grantedKeys(await getGrantedPermissions());
+      }
+      const granted = REQUIRED_PERMISSIONS.filter((p) => grantedSet.has(permKey(p)));
+      if (granted.length === 0) {
+        return {
+          ok: false,
+          message:
+            'Garou no tiene permiso de lectura en Health Connect. Abrí Health Connect → Permisos de apps → Garou y activá pasos, frecuencia cardíaca, sueño, variabilidad y calorías.',
+        };
       }
 
       const timeRangeFilter = {
@@ -177,8 +207,28 @@ export function useWatch(): UseWatchReturn {
       );
       setData(row ?? null);
       setLastSyncAt(new Date());
+
+      // Report exactly what came back so "nothing happened" becomes actionable.
+      const got: string[] = [];
+      if (pasos != null) got.push(`${pasos.toLocaleString()} pasos`);
+      if (fc_reposo_ppm != null) got.push(`FC reposo ${fc_reposo_ppm}`);
+      if (horas_sueno != null) got.push(`${horas_sueno.toFixed(1)} h de sueño`);
+      if (hrv != null) got.push(`HRV ${hrv} ms`);
+      if (calorias_activas != null) got.push(`${calorias_activas} kcal`);
+
+      if (got.length === 0) {
+        return {
+          ok: true,
+          message:
+            'Conectado a Health Connect, pero no devolvió datos de las últimas 24 h. Abrí Samsung Health para forzar una sincronización y verificá que en Samsung Health → Ajustes → Health Connect estén activados pasos, frecuencia cardíaca, sueño, variabilidad y calorías.',
+        };
+      }
+      return { ok: true, message: `Sincronizado: ${got.join(' · ')}.` };
     } catch (err) {
-      console.error('[useWatch] sync error', err);
+      return {
+        ok: false,
+        message: `Error al sincronizar: ${err instanceof Error ? err.message : String(err)}`,
+      };
     } finally {
       isRunning.current = false;
       setLoading(false);
