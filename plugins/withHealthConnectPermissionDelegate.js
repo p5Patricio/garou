@@ -59,19 +59,52 @@ const withHealthConnectPermissionDelegate = (config) => {
     return cfg;
   });
 
-  // 2. Add <queries> so the Health Connect provider package is visible.
+  // 2. Add <queries> so the Health Connect provider package is visible, and the
+  //    Android 14+ (API 34) privacy-policy activity-alias. Apps targeting API 34
+  //    MUST declare an activity handling VIEW_PERMISSION_USAGE with the
+  //    HEALTH_PERMISSIONS category, otherwise Health Connect won't list the app
+  //    or grant it permissions. The library's bundled plugin only adds the older
+  //    ACTION_SHOW_PERMISSIONS_RATIONALE filter (Android 13 and below).
   config = withAndroidManifest(config, (cfg) => {
     const manifest = cfg.modResults.manifest;
-    if (!Array.isArray(manifest.queries)) manifest.queries = [];
 
-    const alreadyDeclared = manifest.queries.some((q) =>
+    // 2a. <queries> for the Health Connect provider package.
+    if (!Array.isArray(manifest.queries)) manifest.queries = [];
+    const queryDeclared = manifest.queries.some((q) =>
       q.package?.some((p) => p?.$?.['android:name'] === HC_PROVIDER_PACKAGE)
     );
-    if (!alreadyDeclared) {
+    if (!queryDeclared) {
       manifest.queries.push({
         package: [{ $: { 'android:name': HC_PROVIDER_PACKAGE } }],
       });
     }
+
+    // 2b. Android 14+ permission-usage activity-alias.
+    const application = manifest.application?.[0];
+    if (application) {
+      if (!Array.isArray(application['activity-alias'])) application['activity-alias'] = [];
+      const aliasName = 'ViewPermissionUsageActivity';
+      const aliasDeclared = application['activity-alias'].some(
+        (a) => a?.$?.['android:name'] === aliasName
+      );
+      if (!aliasDeclared) {
+        application['activity-alias'].push({
+          $: {
+            'android:name': aliasName,
+            'android:exported': 'true',
+            'android:targetActivity': '.MainActivity',
+            'android:permission': 'android.permission.START_VIEW_PERMISSION_USAGE',
+          },
+          'intent-filter': [
+            {
+              action: [{ $: { 'android:name': 'android.intent.action.VIEW_PERMISSION_USAGE' } }],
+              category: [{ $: { 'android:name': 'android.intent.category.HEALTH_PERMISSIONS' } }],
+            },
+          ],
+        });
+      }
+    }
+
     return cfg;
   });
 
