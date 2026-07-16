@@ -119,8 +119,8 @@ export function useMetrics(): UseMetricsReturn {
     const resolvedWeightTrend = trendDirection(resolvedWeightAvg, resolvedPrevAvg);
 
     // 7. Load strength exercises (only those with at least one completed set)
-    const exerciseRows = await db.getAllAsync<{ id: number; nombre: string; usa_placas: number }>(
-      `SELECT DISTINCT e.id, e.nombre, e.usa_placas
+    const exerciseRows = await db.getAllAsync<{ id: number; nombre: string; unidad_preferida: string }>(
+      `SELECT DISTINCT e.id, e.nombre, e.unidad_preferida
        FROM exercises e
        JOIN set_logs sl ON sl.exercise_id = e.id
        WHERE sl.completada = 1
@@ -129,39 +129,79 @@ export function useMetrics(): UseMetricsReturn {
     const resolvedExercises: StrengthExercise[] = exerciseRows.map((r) => ({
       id: r.id,
       nombre: r.nombre,
-      usaPlacas: r.usa_placas === 1,
+      unidadPreferida: (r.unidad_preferida ?? 'kg') as StrengthExercise['unidadPreferida'],
+      usaPlacas: r.unidad_preferida === 'placas',
     }));
 
-    // 8. Load strength data: max peso_kg per ISO week per exercise
-    //    DATE(ws.fecha, 'weekday 0', '-6 days') returns the ISO Monday for any input date.
-    //    weekday 0 = Sunday; advancing to Sunday then back 6 days always lands on Monday.
-    //    This matches toISOWeekStart() in stats.ts: both yield the same Monday for any date.
+    // 8. Load strength data: max peso_kg per ISO week per exercise in-memory
+    //    First, get latest body weight for bodyweight (bw) fallback.
+    const latestWeightRow = await db.getFirstAsync<{ peso_kg: number }>(
+      `SELECT peso_kg FROM body_metrics WHERE peso_kg IS NOT NULL ORDER BY fecha DESC LIMIT 1`
+    );
+    const bodyweightFallback = latestWeightRow?.peso_kg ?? 78.5;
+
     const strengthRows = await db.getAllAsync<{
       exercise_id: number;
       week_start: string;
-      max_peso: number;
+      carga_valor: number | null;
+      carga_unidad: string | null;
+      peso_kg: number | null;
     }>(
       `SELECT
          sl.exercise_id,
          DATE(ws.fecha, 'weekday 0', '-6 days') AS week_start,
-         MAX(sl.peso_kg) AS max_peso
+         sl.carga_valor,
+         sl.carga_unidad,
+         sl.peso_kg
        FROM set_logs sl
        JOIN workout_sessions ws ON ws.id = sl.session_id
-       WHERE sl.completada = 1
-       GROUP BY sl.exercise_id, week_start
-       ORDER BY week_start ASC`
+       WHERE sl.completada = 1`
     );
 
-    const resolvedStrengthByExercise: Record<number, StrengthPoint[]> = {};
+    const groupedStrength: Record<number, Record<string, {
+      maxNormalized: number;
+      displayVal: number;
+      displayUnit: string;
+    }>> = {};
+
     for (const row of strengthRows) {
-      const point: StrengthPoint = {
-        weekStart: row.week_start,
-        maxPesoKg: row.max_peso,
-      };
-      if (!resolvedStrengthByExercise[row.exercise_id]) {
-        resolvedStrengthByExercise[row.exercise_id] = [];
+      const val = row.carga_valor ?? row.peso_kg ?? 0;
+      const unit = row.carga_unidad ?? 'kg';
+      
+      let normalized = val;
+      if (unit === 'lb') {
+        normalized = val * 0.453592;
+      } else if (unit === 'placas') {
+        normalized = val * 5;
+      } else if (unit === 'bw') {
+        normalized = bodyweightFallback + val;
       }
-      resolvedStrengthByExercise[row.exercise_id].push(point);
+
+      if (!groupedStrength[row.exercise_id]) {
+        groupedStrength[row.exercise_id] = {};
+      }
+
+      const currentMax = groupedStrength[row.exercise_id][row.week_start];
+      if (!currentMax || normalized > currentMax.maxNormalized) {
+        groupedStrength[row.exercise_id][row.week_start] = {
+          maxNormalized: normalized,
+          displayVal: val,
+          displayUnit: unit,
+        };
+      }
+    }
+
+    const resolvedStrengthByExercise: Record<number, StrengthPoint[]> = {};
+    for (const exIdStr of Object.keys(groupedStrength)) {
+      const exId = Number(exIdStr);
+      resolvedStrengthByExercise[exId] = Object.entries(groupedStrength[exId])
+        .map(([weekStart, data]) => ({
+          weekStart,
+          maxPesoKg: Math.round(data.maxNormalized * 100) / 100,
+          displayVal: data.displayVal,
+          displayUnit: data.displayUnit,
+        }))
+        .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
     }
 
     // 9. Default exercise: most recently logged

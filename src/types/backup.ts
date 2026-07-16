@@ -5,13 +5,9 @@ export interface BackupFile {
     exercises: any[];
     workout_sessions: any[];
     set_logs: any[];
-    foods: any[];
-    nutrition_targets: any[];
-    nutrition_logs: any[];
     body_metrics: any[];
     cardio_logs: any[];
-    water_logs: any[];
-    watch_daily: any[];
+    active_timers?: any[];
   };
 }
 

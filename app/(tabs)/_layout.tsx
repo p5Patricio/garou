@@ -6,9 +6,9 @@ import Icon from '../../src/components/Icon';
 const TABS = [
   { name: 'index', label: 'Hoy', icon: 'home' },
   { name: 'train', label: 'Entrenar', icon: 'dumbbell' },
-  { name: 'eat', label: 'Comer', icon: 'fork' },
+  { name: 'cardio', label: 'Cardio', icon: 'bike' },
   { name: 'progress', label: 'Progreso', icon: 'chart' },
-  { name: 'settings', label: 'Ajustes', icon: 'settings' },
+  { name: 'routine', label: 'Rutina', icon: 'settings' },
 ] as const;
 
 interface RouteObj {
@@ -75,9 +75,10 @@ export default function TabLayout() {
     <Tabs tabBar={(props) => <CustomTabBar {...(props as unknown as TabBarProps)} />} screenOptions={{ headerShown: false }}>
       <Tabs.Screen name="index" options={{ title: 'Hoy' }} />
       <Tabs.Screen name="train" options={{ title: 'Entrenar' }} />
-      <Tabs.Screen name="eat" options={{ title: 'Comer' }} />
+      <Tabs.Screen name="cardio" options={{ title: 'Cardio' }} />
       <Tabs.Screen name="progress" options={{ title: 'Progreso' }} />
-      <Tabs.Screen name="settings" options={{ title: 'Ajustes' }} />
+      <Tabs.Screen name="routine" options={{ title: 'Rutina' }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );
 }

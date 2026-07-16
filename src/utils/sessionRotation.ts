@@ -40,6 +40,12 @@ export async function nextInRotation(db: SQLiteDatabase): Promise<string> {
   return 'Torso A';
 }
 
+export function getSuggestedRoutine(date: Date): string {
+  const day = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  const mapping = ['descanso', 'Torso A', 'Pierna A', 'Ligero', 'Torso B', 'Pierna B', 'descanso'];
+  return mapping[day] || 'descanso';
+}
+
 /**
  * Resolve the state of today's gym day: an existing row (pendiente / completada
  * / descanso) or, when there's no row yet, the suggested next session.
@@ -59,7 +65,7 @@ export async function resolveTodaySession(db: SQLiteDatabase): Promise<TodaySess
   );
 
   if (!row) {
-    return { tipo: await nextInRotation(db), estado: 'sugerida', sessionId: null };
+    return { tipo: getSuggestedRoutine(new Date()), estado: 'sugerida', sessionId: null };
   }
   if (row.es_descanso === 1) {
     return { tipo: row.tipo_sesion, estado: 'descanso', sessionId: row.id };

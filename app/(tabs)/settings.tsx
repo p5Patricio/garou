@@ -1,14 +1,14 @@
 import React, { useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme, RADII, type AccentKey } from '../../src/constants/theme';
-import Toggle from '../../src/components/Toggle';
-import SettingsRow from '../../src/components/SettingsRow';
 import SectionLabel from '../../src/components/SectionLabel';
+import SettingsRow from '../../src/components/SettingsRow';
+import Toggle from '../../src/components/Toggle';
+import { RADII, type AccentKey, useTheme } from '../../src/constants/theme';
 import { useBackup } from '../../src/hooks/useBackup';
 
 const ACCENT_COLORS: { key: AccentKey; hex: string; label: string }[] = [
-  { key: 'amber', hex: '#D4920A', label: 'Ámbar' },
+  { key: 'amber', hex: '#D4920A', label: 'Ambar' },
   { key: 'coral', hex: '#D95240', label: 'Coral' },
   { key: 'blue', hex: '#3B82F6', label: 'Azul' },
 ];
@@ -16,8 +16,7 @@ const ACCENT_COLORS: { key: AccentKey; hex: string; label: string }[] = [
 export default function SettingsScreen() {
   const { theme, isDark, setIsDark, accent, setAccent } = useTheme();
   const { loading, lastResult, errorMsg, exportBackup, importBackup } = useBackup();
-
-  const accentLabel = ACCENT_COLORS.find((a) => a.key === accent)?.label ?? 'Ámbar';
+  const accentLabel = ACCENT_COLORS.find((a) => a.key === accent)?.label ?? 'Azul';
 
   useEffect(() => {
     if (lastResult === 'error' && errorMsg) {
@@ -32,12 +31,12 @@ export default function SettingsScreen() {
           <Text style={[styles.title, { color: theme.text1 }]}>Ajustes</Text>
           <View style={[styles.profileCard, { backgroundColor: theme.bg2, borderColor: theme.border, borderRadius: RADII.r2 }]}>
             <View style={[styles.avatar, { backgroundColor: theme.accentA }]}>
-              <Text style={[styles.avatarText, { color: theme.accent }]}>U</Text>
+              <Text style={[styles.avatarText, { color: theme.accent }]}>G</Text>
             </View>
-            <View>
-              <Text style={[styles.profileName, { color: theme.text1 }]}>Usuario</Text>
-              <Text style={[styles.profileSub, { color: theme.text3 }]}>22 años · 78.5 kg · 1.70 m</Text>
-              <Text style={[styles.profileSub2, { color: theme.text3 }]}>Recomposición · 2,350 kcal · 160 g P</Text>
+            <View style={styles.profileText}>
+              <Text style={[styles.profileName, { color: theme.text1 }]}>Garou</Text>
+              <Text style={[styles.profileSub, { color: theme.text3 }]}>Gym - cardio - peso - fotos</Text>
+              <Text style={[styles.profileSub2, { color: theme.text3 }]}>Unidades: kg, placas, lb y BW</Text>
             </View>
           </View>
         </View>
@@ -48,7 +47,7 @@ export default function SettingsScreen() {
             <SettingsRow
               icon={isDark ? 'moon' : 'sun'}
               label="Modo oscuro"
-              sub={isDark ? 'Activo — optimizado para el gym' : 'Modo claro activo'}
+              sub={isDark ? 'Activo - optimizado para el gym' : 'Modo claro activo'}
               right={<Toggle value={isDark} onChange={setIsDark} />}
             />
             <SettingsRow
@@ -62,12 +61,17 @@ export default function SettingsScreen() {
                     <TouchableOpacity
                       key={key}
                       onPress={() => setAccent(key)}
-                      style={[styles.accentDot, {
-                        backgroundColor: hex,
-                        borderColor: accent === key ? theme.text1 : 'transparent',
-                        borderWidth: accent === key ? 3 : 2,
-                      }]}
+                      style={[
+                        styles.accentDot,
+                        {
+                          backgroundColor: hex,
+                          borderColor: accent === key ? theme.text1 : 'transparent',
+                          borderWidth: accent === key ? 3 : 2,
+                        },
+                      ]}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Color ${key}`}
                     />
                   ))}
                 </View>
@@ -82,7 +86,7 @@ export default function SettingsScreen() {
             <SettingsRow
               icon="upload"
               label="Exportar respaldo"
-              sub={loading ? 'Procesando…' : 'Descarga todos tus registros'}
+              sub={loading ? 'Procesando...' : 'Entrenos, cardio, peso y fotos'}
               onPress={() => { if (!loading) exportBackup(); }}
               right={loading ? <ActivityIndicator size="small" color={theme.accent} /> : undefined}
             />
@@ -95,32 +99,21 @@ export default function SettingsScreen() {
               sub="Restaura desde un archivo JSON"
               onPress={() => { if (!loading) importBackup(); }}
             />
-            <SettingsRow
-              icon="link"
-              label="Health Connect"
-              last
-              sub="Pasos, FC, sueño del Galaxy Watch 7"
-              right={
-                <View style={[styles.badge, { backgroundColor: theme.bg4 }]}>
-                  <Text style={[styles.badgeText, { color: theme.text3 }]}>No conectado</Text>
-                </View>
-              }
-            />
+            <SettingsRow icon="timer" label="Timers" last sub="Descanso y cardio dentro de Garou" onPress={() => {}} />
           </View>
         </View>
 
         <View style={styles.section}>
           <SectionLabel>Tu plan</SectionLabel>
           <View style={[styles.sectionCard, { backgroundColor: theme.bg2, borderColor: theme.border, borderRadius: RADII.r2 }]}>
-            <SettingsRow icon="weight" label="Objetivos de macros" sub="2,350 kcal · P 160 g · C 290 g · F 70 g" onPress={() => {}} />
-            <SettingsRow icon="dumbbell" label="Rutina activa" sub="Torso/Pierna 4×/sem + Día ligero" onPress={() => {}} />
-            <SettingsRow icon="chart" label="Frecuencias objetivo" last sub="Recomposición · −250 kcal/día" onPress={() => {}} />
+            <SettingsRow icon="dumbbell" label="Rutina activa" sub="Torso/Pierna + dia ligero" onPress={() => {}} />
+            <SettingsRow icon="chart" label="Objetivos de progreso" last sub="Fuerza, adherencia y cambio fisico" onPress={() => {}} />
           </View>
         </View>
 
         <View style={styles.buildInfo}>
-          <Text style={[styles.buildText, { color: theme.text4 }]}>Garou v1.0 · Expo · React Native · SQLite</Text>
-          <Text style={[styles.buildText, { color: theme.text4 }]}>Health Connect — Fase 5</Text>
+          <Text style={[styles.buildText, { color: theme.text4 }]}>Garou v2 - Expo - React Native - SQLite</Text>
+          <Text style={[styles.buildText, { color: theme.text4 }]}>Sin nutricion ni Health Connect</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -135,6 +128,7 @@ const styles = StyleSheet.create({
   profileCard: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderWidth: 1 },
   avatar: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 22, fontWeight: '800' },
+  profileText: { flex: 1 },
   profileName: { fontSize: 16, fontWeight: '700' },
   profileSub: { fontSize: 13, marginTop: 1 },
   profileSub2: { fontSize: 12, marginTop: 2 },
@@ -142,8 +136,6 @@ const styles = StyleSheet.create({
   sectionCard: { marginHorizontal: 20, borderWidth: 1, overflow: 'hidden' },
   accentPickers: { flexDirection: 'row', gap: 8 },
   accentDot: { width: 24, height: 24, borderRadius: 12 },
-  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  badgeText: { fontSize: 12, fontWeight: '700' },
   buildInfo: { paddingTop: 20, paddingHorizontal: 20, alignItems: 'center', gap: 4 },
   buildText: { fontSize: 11 },
   disclaimer: { fontSize: 11, marginHorizontal: 14, marginBottom: 2, fontStyle: 'italic' },

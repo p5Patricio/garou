@@ -13,7 +13,12 @@ async function migrateDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
   );
   const currentVersion = versionRow?.user_version ?? 0;
 
-  if (currentVersion >= 7) return;
+  if (currentVersion === 0) {
+    await db.execAsync('PRAGMA user_version = 9;');
+    return;
+  }
+
+  if (currentVersion >= 9) return;
 
   if (currentVersion < 1) {
   // Migration 1: add UNIQUE(session_id, exercise_id, num_serie) to set_logs
@@ -136,6 +141,69 @@ async function migrateDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     'ALTER TABLE workout_sessions ADD COLUMN es_descanso INTEGER NOT NULL DEFAULT 0;'
   );
   await db.execAsync('PRAGMA user_version = 7;');
+  }
+
+  if (currentVersion < 8) {
+  // Migration 8: gym-only model. Keep legacy columns, add editable routine
+  // metadata and literal load units for future logs.
+  const exerciseColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(exercises)');
+  const exerciseColumnNames = new Set(exerciseColumns.map((c) => c.name));
+  if (!exerciseColumnNames.has('orden')) {
+    await db.execAsync('ALTER TABLE exercises ADD COLUMN orden INTEGER NOT NULL DEFAULT 0;');
+  }
+  if (!exerciseColumnNames.has('rir_min')) {
+    await db.execAsync('ALTER TABLE exercises ADD COLUMN rir_min INTEGER NOT NULL DEFAULT 0;');
+  }
+  if (!exerciseColumnNames.has('rir_max')) {
+    await db.execAsync('ALTER TABLE exercises ADD COLUMN rir_max INTEGER NOT NULL DEFAULT 0;');
+  }
+  if (!exerciseColumnNames.has('unidad_preferida')) {
+    await db.execAsync("ALTER TABLE exercises ADD COLUMN unidad_preferida TEXT NOT NULL DEFAULT 'kg';");
+  }
+  if (!exerciseColumnNames.has('activo')) {
+    await db.execAsync('ALTER TABLE exercises ADD COLUMN activo INTEGER NOT NULL DEFAULT 1;');
+  }
+  if (!exerciseColumnNames.has('superset_group')) {
+    await db.execAsync('ALTER TABLE exercises ADD COLUMN superset_group TEXT;');
+  }
+  await db.execAsync('UPDATE exercises SET rir_min = rir_objetivo WHERE rir_min = 0 AND rir_objetivo IS NOT NULL;');
+  await db.execAsync('UPDATE exercises SET rir_max = rir_objetivo WHERE rir_max = 0 AND rir_objetivo IS NOT NULL;');
+  if (exerciseColumnNames.has('usa_placas')) {
+    await db.execAsync("UPDATE exercises SET unidad_preferida = CASE WHEN usa_placas = 1 THEN 'placas' ELSE unidad_preferida END;");
+  }
+
+  const setColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(set_logs)');
+  const setColumnNames = new Set(setColumns.map((c) => c.name));
+  if (!setColumnNames.has('carga_valor')) {
+    await db.execAsync('ALTER TABLE set_logs ADD COLUMN carga_valor REAL NOT NULL DEFAULT 0;');
+  }
+  if (!setColumnNames.has('carga_unidad')) {
+    await db.execAsync("ALTER TABLE set_logs ADD COLUMN carga_unidad TEXT NOT NULL DEFAULT 'kg';");
+  }
+  await db.execAsync('UPDATE set_logs SET carga_valor = peso_kg WHERE carga_valor = 0 AND peso_kg IS NOT NULL;');
+  await db.execAsync('PRAGMA user_version = 8;');
+  }
+
+  if (currentVersion < 9) {
+  // Migration 9: remove nutrition/watch tables and add persisted timers.
+  await db.execAsync('DROP TABLE IF EXISTS nutrition_logs;');
+  await db.execAsync('DROP TABLE IF EXISTS nutrition_targets;');
+  await db.execAsync('DROP TABLE IF EXISTS foods;');
+  await db.execAsync('DROP TABLE IF EXISTS water_logs;');
+  await db.execAsync('DROP TABLE IF EXISTS watch_daily;');
+  await db.execAsync(
+    `CREATE TABLE IF NOT EXISTS active_timers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,
+      label TEXT NOT NULL,
+      started_at_ms INTEGER NOT NULL,
+      end_at_ms INTEGER NOT NULL,
+      total_seg INTEGER NOT NULL,
+      notification_id TEXT,
+      active INTEGER NOT NULL DEFAULT 1
+    );`
+  );
+  await db.execAsync('PRAGMA user_version = 9;');
   }
 }
 

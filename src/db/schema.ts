@@ -5,12 +5,18 @@ export const SCHEMA_SQL = `
     grupo_muscular TEXT NOT NULL,
     equipo TEXT NOT NULL,
     sesion TEXT NOT NULL,
+    orden INTEGER NOT NULL DEFAULT 0,
     series_objetivo INTEGER NOT NULL,
     reps_min INTEGER NOT NULL,
     reps_max INTEGER NOT NULL,
+    rir_min INTEGER NOT NULL DEFAULT 0,
+    rir_max INTEGER NOT NULL DEFAULT 0,
     rir_objetivo INTEGER NOT NULL,
     descanso_seg INTEGER NOT NULL,
-    notas_tecnica TEXT
+    notas_tecnica TEXT,
+    unidad_preferida TEXT NOT NULL DEFAULT 'kg',
+    activo INTEGER NOT NULL DEFAULT 1,
+    superset_group TEXT
   );
 
   CREATE TABLE IF NOT EXISTS workout_sessions (
@@ -19,7 +25,9 @@ export const SCHEMA_SQL = `
     tipo_sesion TEXT NOT NULL,
     duracion_min INTEGER,
     notas TEXT,
-    completada INTEGER NOT NULL DEFAULT 0
+    completada INTEGER NOT NULL DEFAULT 0,
+    es_descanso INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(fecha, tipo_sesion)
   );
 
   CREATE TABLE IF NOT EXISTS set_logs (
@@ -28,6 +36,8 @@ export const SCHEMA_SQL = `
     exercise_id INTEGER NOT NULL,
     num_serie INTEGER NOT NULL,
     peso_kg REAL NOT NULL DEFAULT 0,
+    carga_valor REAL NOT NULL DEFAULT 0,
+    carga_unidad TEXT NOT NULL DEFAULT 'kg',
     reps INTEGER NOT NULL,
     rir_real INTEGER,
     completada INTEGER NOT NULL DEFAULT 0,
@@ -36,39 +46,13 @@ export const SCHEMA_SQL = `
     UNIQUE(session_id, exercise_id, num_serie)
   );
 
-  CREATE TABLE IF NOT EXISTS foods (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nombre TEXT NOT NULL,
-    kcal_100g REAL NOT NULL,
-    proteina_100g REAL NOT NULL,
-    carbos_100g REAL NOT NULL,
-    grasa_100g REAL NOT NULL,
-    precio_aprox_mxn REAL
-  );
-
-  CREATE TABLE IF NOT EXISTS nutrition_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    fecha TEXT NOT NULL,
-    num_comida INTEGER NOT NULL,
-    food_id INTEGER NOT NULL,
-    gramos REAL NOT NULL,
-    FOREIGN KEY (food_id) REFERENCES foods(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS nutrition_targets (
-    tipo_dia TEXT PRIMARY KEY,
-    kcal_objetivo INTEGER NOT NULL,
-    proteina_g INTEGER NOT NULL,
-    carbos_g INTEGER NOT NULL,
-    grasa_g INTEGER NOT NULL
-  );
-
   CREATE TABLE IF NOT EXISTS body_metrics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     fecha TEXT NOT NULL,
     peso_kg REAL,
     cintura_cm REAL,
-    foto_uri TEXT
+    foto_uri TEXT,
+    UNIQUE(fecha)
   );
 
   CREATE TABLE IF NOT EXISTS cardio_logs (
@@ -80,18 +64,14 @@ export const SCHEMA_SQL = `
     zona INTEGER
   );
 
-  CREATE TABLE IF NOT EXISTS watch_daily (
-    fecha TEXT PRIMARY KEY,
-    pasos INTEGER,
-    fc_reposo_ppm INTEGER,
-    horas_sueno REAL,
-    hrv INTEGER,
-    calorias_activas INTEGER
-  );
-
-  CREATE TABLE IF NOT EXISTS water_logs (
+  CREATE TABLE IF NOT EXISTS active_timers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    fecha TEXT NOT NULL,
-    ml INTEGER NOT NULL
+    kind TEXT NOT NULL,
+    label TEXT NOT NULL,
+    started_at_ms INTEGER NOT NULL,
+    end_at_ms INTEGER NOT NULL,
+    total_seg INTEGER NOT NULL,
+    notification_id TEXT,
+    active INTEGER NOT NULL DEFAULT 1
   );
 `;

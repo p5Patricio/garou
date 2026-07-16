@@ -19,6 +19,8 @@ import { getDB } from '../db';
 interface SetEntry {
   num_serie: number;
   peso_kg: number;
+  carga_valor: number | null;
+  carga_unidad: string | null;
   reps: number;
   rir_real: number | null;
 }
@@ -71,7 +73,7 @@ export default function ExerciseHistoryScreen({ exerciseId, exerciseName, onClos
 
         for (const sess of sessionRows) {
           const sets = await db.getAllAsync<SetEntry>(
-            `SELECT num_serie, peso_kg, reps, rir_real
+            `SELECT num_serie, peso_kg, carga_valor, carga_unidad, reps, rir_real
              FROM set_logs
              WHERE session_id = ? AND exercise_id = ? AND completada = 1
              ORDER BY num_serie ASC`,
@@ -183,7 +185,9 @@ export default function ExerciseHistoryScreen({ exerciseId, exerciseName, onClos
                         </Text>
                       </View>
                       <Text style={[styles.tableCell, styles.cellPeso, { color: theme.text1 }]}>
-                        {s.peso_kg === 0 ? 'BW' : `${s.peso_kg} kg`}
+                        {(s.carga_unidad === 'bw' || (s.carga_valor ?? s.peso_kg) === 0)
+                          ? 'BW'
+                          : `${s.carga_valor ?? s.peso_kg} ${s.carga_unidad ?? 'kg'}`}
                       </Text>
                       <Text style={[styles.tableCell, styles.cellReps, { color: theme.text1 }]}>
                         {s.reps}

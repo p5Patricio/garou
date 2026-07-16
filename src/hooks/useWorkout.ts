@@ -1,38 +1,15 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { initDB, getDB } from '../db';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { getDB, initDB } from '../db';
+import type { LoadUnit, ProgressionResult, SetRow, SetState, SetsMap, UiExercise } from '../types/workout';
 import { isReadyToIncrease } from '../utils/progression';
 import { resolveTodaySession, type SessionEstado, type TodaySession } from '../utils/sessionRotation';
-import type {
-  UiExercise,
-  SetState,
-  SetsMap,
-  SetRow,
-  ProgressionResult,
-} from '../types/workout';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-// Map DB exercise row to the UI shape consumed by train.tsx
-function mapExercise(row: {
-  id: number;
-  nombre: string;
-  grupo_muscular: string;
-  equipo: string;
-  sesion: string;
-  series_objetivo: number;
-  reps_min: number;
-  reps_max: number;
-  rir_objetivo: number;
-  descanso_seg: number;
-  notas_tecnica: string | null;
-  usa_placas: number;
-}): UiExercise {
+function mapExercise(row: any): UiExercise {
+  const unit = (row.unidad_preferida ?? 'kg') as LoadUnit;
   return {
     id: row.id,
     nombre: row.nombre,
@@ -41,17 +18,15 @@ function mapExercise(row: {
     sesion: row.sesion,
     series: row.series_objetivo,
     reps: [row.reps_min, row.reps_max],
-    rir: row.rir_objetivo,
+    rir: row.rir_min ?? row.rir_objetivo ?? 0,
     descansoSeg: row.descanso_seg,
     notasTecnica: row.notas_tecnica,
-    esBodyweight: row.equipo === 'libre' && row.grupo_muscular === 'Abdomen',
-    usaPlacas: row.usa_placas === 1,
+    esBodyweight: unit === 'bw',
+    unidadPreferida: unit,
+    usaPlacas: unit === 'placas',
+    supersetGroup: row.superset_group ?? null,
   };
 }
-
-// ---------------------------------------------------------------------------
-// Public interface
-// ---------------------------------------------------------------------------
 
 export interface UseWorkoutReturn {
   loading: boolean;
@@ -63,231 +38,165 @@ export interface UseWorkoutReturn {
   progressionByExercise: Record<number, ProgressionResult>;
   sessionComplete: boolean;
   completeSet: (exId: number, numSerie: number, state: SetState) => Promise<void>;
-  updateSet: (exId: number, numSerie: number, field: keyof SetState, value: number | boolean) => void;
+  undoSet: (exId: number, numSerie: number) => Promise<void>;
+  updateSet: (exId: number, numSerie: number, field: keyof SetState, value: number | boolean | LoadUnit) => void;
   finishSession: () => Promise<void>;
   selectSession: (tipo: string) => Promise<void>;
   markRestDay: () => Promise<void>;
   undoRestDay: () => Promise<void>;
+  setExerciseUnit: (exId: number, unit: LoadUnit) => Promise<void>;
   togglePlacas: (exId: number) => Promise<void>;
 }
 
-// ---------------------------------------------------------------------------
-// Hook
-// ---------------------------------------------------------------------------
-
 export function useWorkout(): UseWorkoutReturn {
   const [loading, setLoading] = useState(true);
-  const [tipoSesion, setTipoSesion] = useState<string>('');
+  const [tipoSesion, setTipoSesion] = useState('');
   const [estado, setEstado] = useState<SessionEstado>('sugerida');
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [exercises, setExercises] = useState<UiExercise[]>([]);
   const [sets, setSets] = useState<SetsMap>({});
   const [progressionByExercise, setProgressionByExercise] = useState<Record<number, ProgressionResult>>({});
+  const startTimeRef = useRef(Date.now());
 
-  // Track session start time to compute duracion_min on finish
-  const startTimeRef = useRef<number>(Date.now());
-
-  // --------------------------------------------------------------------------
-  // Load exercises for the session's tipo_sesion
-  // --------------------------------------------------------------------------
   const loadExercises = useCallback(async (sessionType: string): Promise<UiExercise[]> => {
-    const db = getDB();
-    const rows = await db.getAllAsync<{
-      id: number;
-      nombre: string;
-      grupo_muscular: string;
-      equipo: string;
-      sesion: string;
-      series_objetivo: number;
-      reps_min: number;
-      reps_max: number;
-      rir_objetivo: number;
-      descanso_seg: number;
-      notas_tecnica: string | null;
-      usa_placas: number;
-    }>(
+    const rows = await getDB().getAllAsync<any>(
       `SELECT id, nombre, grupo_muscular, equipo, sesion,
-              series_objetivo, reps_min, reps_max, rir_objetivo,
-              descanso_seg, notas_tecnica, usa_placas
+              series_objetivo, reps_min, reps_max, rir_objetivo, rir_min,
+              descanso_seg, notas_tecnica, unidad_preferida, superset_group
        FROM exercises
-       WHERE sesion = ?
-       ORDER BY id ASC`,
+       WHERE sesion = ? AND activo = 1
+       ORDER BY orden ASC, id ASC`,
       [sessionType]
     );
     return rows.map(mapExercise);
   }, []);
 
-  // --------------------------------------------------------------------------
-  // Build initial SetsMap from prior session data + current session's logs.
-  // sessId may be null when no session row exists yet (lazy creation).
-  // --------------------------------------------------------------------------
-  const buildSetsMap = useCallback(
-    async (exs: UiExercise[], sessId: number | null): Promise<SetsMap> => {
-      const db = getDB();
-      const setsMap: SetsMap = {};
+  const buildSetsMap = useCallback(async (exs: UiExercise[], sessId: number | null): Promise<SetsMap> => {
+    const db = getDB();
+    const setsMap: SetsMap = {};
 
-      for (const ex of exs) {
-        setsMap[ex.id] = {};
+    for (const ex of exs) {
+      setsMap[ex.id] = {};
+      const priorRows = await db.getAllAsync<any>(
+        `SELECT sl.num_serie, sl.peso_kg, sl.carga_valor, sl.carga_unidad, sl.reps, sl.rir_real
+         FROM set_logs sl
+         JOIN workout_sessions ws ON ws.id = sl.session_id
+         WHERE sl.exercise_id = ?
+           AND ws.id <> ?
+           AND sl.completada = 1
+         ORDER BY ws.fecha DESC, sl.num_serie ASC`,
+        [ex.id, sessId ?? -1]
+      );
 
-        // Pre-fill from most recent prior completed session (any session type)
-        const priorRows = await db.getAllAsync<{
-          num_serie: number;
-          peso_kg: number;
-          reps: number;
-          rir_real: number | null;
-        }>(
-          `SELECT sl.num_serie, sl.peso_kg, sl.reps, sl.rir_real
-           FROM set_logs sl
-           JOIN workout_sessions ws ON ws.id = sl.session_id
-           WHERE sl.exercise_id = ?
-             AND ws.id <> ?
-             AND sl.completada = 1
-           ORDER BY ws.fecha DESC, sl.num_serie ASC`,
-          [ex.id, sessId ?? -1]
-        );
-
-        // Build a map of the most recent weight/reps per serie index
-        const priorByNumSerie: Record<number, { peso_kg: number; reps: number; rir_real: number | null }> = {};
-        for (const row of priorRows) {
-          // priorRows is ordered by fecha DESC — first hit wins (most recent)
-          if (!(row.num_serie in priorByNumSerie)) {
-            priorByNumSerie[row.num_serie] = {
-              peso_kg: row.peso_kg,
-              reps: row.reps,
-              rir_real: row.rir_real,
-            };
-          }
-        }
-
-        // Check if this session already has logged sets (auto-resume).
-        // Skip entirely when there's no session row yet.
-        const currentBySerie: Record<number, { peso_kg: number; reps: number; rir_real: number | null; completada: number }> = {};
-        if (sessId !== null) {
-          const currentRows = await db.getAllAsync<{
-            num_serie: number;
-            peso_kg: number;
-            reps: number;
-            rir_real: number | null;
-            completada: number;
-          }>(
-            `SELECT num_serie, peso_kg, reps, rir_real, completada
-             FROM set_logs
-             WHERE session_id = ? AND exercise_id = ?
-             ORDER BY num_serie ASC`,
-            [sessId, ex.id]
-          );
-          for (const row of currentRows) {
-            currentBySerie[row.num_serie] = row;
-          }
-        }
-
-        // Populate each set slot (num_serie is 0-indexed in the UI)
-        for (let i = 0; i < ex.series; i++) {
-          const current = currentBySerie[i];
-          if (current) {
-            // Already logged in this session — restore its state
-            setsMap[ex.id][i] = {
-              weight: current.peso_kg,
-              reps: current.reps,
-              rir: current.rir_real ?? ex.rir,
-              done: current.completada === 1,
-            };
-          } else {
-            // Pre-fill from prior session or use defaults
-            const prior = priorByNumSerie[i];
-            setsMap[ex.id][i] = {
-              weight: prior ? prior.peso_kg : 0,
-              reps: prior ? prior.reps : ex.reps[0],
-              rir: prior?.rir_real != null ? prior.rir_real : ex.rir,
-              done: false,
-            };
-          }
-        }
-      }
-
-      return setsMap;
-    },
-    []
-  );
-
-  // --------------------------------------------------------------------------
-  // Compute progression for all exercises
-  // --------------------------------------------------------------------------
-  const computeProgression = useCallback(
-    async (exs: UiExercise[], currentSessionId: number | null, sessionType: string): Promise<Record<number, ProgressionResult>> => {
-      const db = getDB();
-      const result: Record<number, ProgressionResult> = {};
-
-      for (const ex of exs) {
-        // Fetch the 2 most recent prior COMPLETED sessions with the same tipo_sesion
-        const recentSessions = await db.getAllAsync<{ id: number }>(
-          `SELECT ws.id
-           FROM workout_sessions ws
-           WHERE ws.completada = 1
-             AND ws.tipo_sesion = ?
-             AND ws.id <> ?
-           ORDER BY ws.fecha DESC
-           LIMIT 2`,
-          [sessionType, currentSessionId ?? -1]
-        );
-
-        if (recentSessions.length < 2) {
-          result[ex.id] = {
-            readyToIncrease: false,
-            reason: 'Sin historial suficiente — se necesitan 2 sesiones completadas',
+      const priorBySerie: Record<number, { value: number; unit: LoadUnit; reps: number; rir: number | null }> = {};
+      for (const row of priorRows) {
+        if (!(row.num_serie in priorBySerie)) {
+          priorBySerie[row.num_serie] = {
+            value: row.carga_valor ?? row.peso_kg ?? 0,
+            unit: (row.carga_unidad ?? ex.unidadPreferida) as LoadUnit,
+            reps: row.reps,
+            rir: row.rir_real,
           };
-          continue;
         }
-
-        const sessionSets: SetRow[][] = [];
-        for (const sess of recentSessions) {
-          const rows = await db.getAllAsync<SetRow>(
-            `SELECT id, session_id, exercise_id, num_serie, peso_kg, reps, rir_real, completada
-             FROM set_logs
-             WHERE session_id = ? AND exercise_id = ?
-             ORDER BY num_serie ASC`,
-            [sess.id, ex.id]
-          );
-          sessionSets.push(rows);
-        }
-
-        result[ex.id] = isReadyToIncrease(sessionSets, {
-          repsMax: ex.reps[1],
-          rirObjetivo: ex.rir,
-          seriesObjetivo: ex.series,
-        });
       }
 
-      return result;
-    },
-    []
-  );
+      const currentBySerie: Record<number, any> = {};
+      if (sessId !== null) {
+        const currentRows = await db.getAllAsync<any>(
+          `SELECT num_serie, peso_kg, carga_valor, carga_unidad, reps, rir_real, completada
+           FROM set_logs
+           WHERE session_id = ? AND exercise_id = ?
+           ORDER BY num_serie ASC`,
+          [sessId, ex.id]
+        );
+        for (const row of currentRows) {
+          currentBySerie[row.num_serie] = row;
+        }
+      }
 
-  // --------------------------------------------------------------------------
-  // hydrate — load exercises/sets/progression for a resolved day state
-  // --------------------------------------------------------------------------
-  const hydrate = useCallback(
-    async (t: TodaySession): Promise<void> => {
-      const exs = await loadExercises(t.tipo);
-      const setsMap = await buildSetsMap(exs, t.sessionId);
-      const progression = await computeProgression(exs, t.sessionId, t.tipo);
+      for (let i = 0; i < ex.series; i++) {
+        const current = currentBySerie[i];
+        const prior = priorBySerie[i];
+        setsMap[ex.id][i] = current
+          ? {
+              weight: current.carga_valor ?? current.peso_kg ?? 0,
+              unit: (current.carga_unidad ?? ex.unidadPreferida) as LoadUnit,
+            reps: current.reps,
+            rir: current.rir_real ?? ex.rir,
+            done: current.completada === 1,
+            dirty: true,
+          }
+          : {
+              weight: prior?.value ?? 0,
+              unit: prior?.unit ?? ex.unidadPreferida,
+              reps: prior?.reps ?? ex.reps[0],
+              rir: prior?.rir ?? ex.rir,
+              done: false,
+              dirty: false,
+            };
+      }
+    }
 
-      setTipoSesion(t.tipo);
-      setEstado(t.estado);
-      setSessionId(t.sessionId);
-      setExercises(exs);
-      setSets(setsMap);
-      setProgressionByExercise(progression);
-    },
-    [loadExercises, buildSetsMap, computeProgression]
-  );
+    return setsMap;
+  }, []);
 
-  // --------------------------------------------------------------------------
-  // Initial load
-  // --------------------------------------------------------------------------
+  const computeProgression = useCallback(async (exs: UiExercise[], currentSessionId: number | null, sessionType: string) => {
+    const db = getDB();
+    const result: Record<number, ProgressionResult> = {};
+
+    for (const ex of exs) {
+      const recentSessions = await db.getAllAsync<{ id: number }>(
+        `SELECT ws.id
+         FROM workout_sessions ws
+         WHERE ws.completada = 1
+           AND ws.tipo_sesion = ?
+           AND ws.id <> ?
+         ORDER BY ws.fecha DESC
+         LIMIT 2`,
+        [sessionType, currentSessionId ?? -1]
+      );
+
+      if (recentSessions.length < 2) {
+        result[ex.id] = { readyToIncrease: false, reason: 'Sin historial suficiente' };
+        continue;
+      }
+
+      const sessionSets: SetRow[][] = [];
+      for (const sess of recentSessions) {
+        const rows = await db.getAllAsync<SetRow>(
+          `SELECT id, session_id, exercise_id, num_serie, peso_kg, carga_valor, carga_unidad, reps, rir_real, completada
+           FROM set_logs
+           WHERE session_id = ? AND exercise_id = ?
+           ORDER BY num_serie ASC`,
+          [sess.id, ex.id]
+        );
+        sessionSets.push(rows);
+      }
+
+      result[ex.id] = isReadyToIncrease(sessionSets, {
+        repsMax: ex.reps[1],
+        rirObjetivo: ex.rir,
+        seriesObjetivo: ex.series,
+      });
+    }
+
+    return result;
+  }, []);
+
+  const hydrate = useCallback(async (t: TodaySession): Promise<void> => {
+    const exs = await loadExercises(t.tipo);
+    const setsMap = await buildSetsMap(exs, t.sessionId);
+    const progression = await computeProgression(exs, t.sessionId, t.tipo);
+    setTipoSesion(t.tipo);
+    setEstado(t.estado);
+    setSessionId(t.sessionId);
+    setExercises(exs);
+    setSets(setsMap);
+    setProgressionByExercise(progression);
+  }, [buildSetsMap, computeProgression, loadExercises]);
+
   useEffect(() => {
     let cancelled = false;
-
     async function load() {
       try {
         await initDB();
@@ -299,18 +208,13 @@ export function useWorkout(): UseWorkoutReturn {
         if (!cancelled) setLoading(false);
       }
     }
-
     load();
     return () => { cancelled = true; };
   }, [hydrate]);
 
-  // --------------------------------------------------------------------------
-  // createTodaySession — lazily create today's pending row for a tipo
-  // --------------------------------------------------------------------------
   const createTodaySession = useCallback(async (tipo: string): Promise<number> => {
     const db = getDB();
     const fecha = today();
-
     const existing = await db.getFirstAsync<{ id: number }>(
       `SELECT id FROM workout_sessions
        WHERE fecha = ? AND tipo_sesion = ? AND completada = 0 AND es_descanso = 0
@@ -331,15 +235,10 @@ export function useWorkout(): UseWorkoutReturn {
       [fecha, tipo]
     );
     if (!created) throw new Error('Failed to create workout session');
-
     startTimeRef.current = Date.now();
     return created.id;
   }, []);
 
-  // --------------------------------------------------------------------------
-  // clearTodayNonCompleted — remove today's pending/rest rows and their logs,
-  // leaving completed sessions (history) untouched.
-  // --------------------------------------------------------------------------
   const clearTodayNonCompleted = useCallback(async (): Promise<void> => {
     const db = getDB();
     const fecha = today();
@@ -348,158 +247,154 @@ export function useWorkout(): UseWorkoutReturn {
        WHERE session_id IN (SELECT id FROM workout_sessions WHERE fecha = ? AND completada = 0)`,
       [fecha]
     );
-    await db.runAsync(
-      `DELETE FROM workout_sessions WHERE fecha = ? AND completada = 0`,
-      [fecha]
-    );
+    await db.runAsync('DELETE FROM workout_sessions WHERE fecha = ? AND completada = 0', [fecha]);
   }, []);
 
-  // --------------------------------------------------------------------------
-  // completeSet — UPSERT to DB, then update local state.
-  // Lazily creates today's session row on the first logged set.
-  // --------------------------------------------------------------------------
-  const completeSet = useCallback(
-    async (exId: number, numSerie: number, state: SetState): Promise<void> => {
-      const db = getDB();
+  const completeSet = useCallback(async (exId: number, numSerie: number, state: SetState): Promise<void> => {
+    const db = getDB();
+    let sessId = sessionId;
+    if (sessId === null) {
+      sessId = await createTodaySession(tipoSesion);
+      setSessionId(sessId);
+      setEstado('pendiente');
+    }
 
-      let sessId = sessionId;
-      if (sessId === null) {
-        sessId = await createTodaySession(tipoSesion);
-        setSessionId(sessId);
-        setEstado('pendiente');
+    await db.runAsync(
+      `INSERT INTO set_logs (session_id, exercise_id, num_serie, peso_kg, carga_valor, carga_unidad, reps, rir_real, completada)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+       ON CONFLICT(session_id, exercise_id, num_serie)
+       DO UPDATE SET
+         peso_kg = excluded.peso_kg,
+         carga_valor = excluded.carga_valor,
+         carga_unidad = excluded.carga_unidad,
+         reps = excluded.reps,
+         rir_real = excluded.rir_real,
+         completada = excluded.completada`,
+      [sessId, exId, numSerie, state.unit === 'kg' ? state.weight : 0, state.weight, state.unit, state.reps, state.rir]
+    );
+
+    setSets((prev) => {
+      const ex = exercises.find((item) => item.id === exId);
+      const currentExerciseSets = prev[exId] ?? {};
+      const completed = { ...state, done: true, dirty: true, completedAt: Date.now() };
+      const nextExerciseSets = { ...currentExerciseSets, [numSerie]: completed };
+      const nextIdx = numSerie + 1;
+
+      if (ex && nextIdx < ex.series) {
+        const nextSet = currentExerciseSets[nextIdx];
+        if (nextSet && !nextSet.done && !nextSet.dirty) {
+          nextExerciseSets[nextIdx] = {
+            ...nextSet,
+            weight: completed.weight,
+            unit: completed.unit,
+            reps: completed.reps,
+            rir: completed.rir,
+            dirty: false,
+          };
+        }
       }
 
-      await db.runAsync(
-        `INSERT INTO set_logs (session_id, exercise_id, num_serie, peso_kg, reps, rir_real, completada)
-         VALUES (?, ?, ?, ?, ?, ?, 1)
-         ON CONFLICT(session_id, exercise_id, num_serie)
-         DO UPDATE SET
-           peso_kg    = excluded.peso_kg,
-           reps       = excluded.reps,
-           rir_real   = excluded.rir_real,
-           completada = excluded.completada`,
-        [sessId, exId, numSerie, state.weight, state.reps, state.rir]
+      return {
+        ...prev,
+        [exId]: nextExerciseSets,
+      };
+    });
+  }, [createTodaySession, exercises, sessionId, tipoSesion]);
+
+  const undoSet = useCallback(async (exId: number, numSerie: number): Promise<void> => {
+    if (sessionId !== null) {
+      await getDB().runAsync(
+        'DELETE FROM set_logs WHERE session_id = ? AND exercise_id = ? AND num_serie = ?',
+        [sessionId, exId, numSerie]
       );
+    }
 
-      setSets((prev) => ({
+    setSets((prev) => {
+      const current = prev[exId]?.[numSerie];
+      if (!current) return prev;
+      return {
         ...prev,
         [exId]: {
           ...prev[exId],
-          [numSerie]: { ...state, done: true },
+          [numSerie]: { ...current, done: false, dirty: true, completedAt: undefined },
         },
-      }));
-    },
-    [sessionId, tipoSesion, createTodaySession]
-  );
+      };
+    });
+  }, [sessionId]);
 
-  // --------------------------------------------------------------------------
-  // updateSet — in-memory only, no DB write
-  // --------------------------------------------------------------------------
-  const updateSet = useCallback(
-    (exId: number, numSerie: number, field: keyof SetState, value: number | boolean): void => {
-      setSets((prev) => ({
-        ...prev,
-        [exId]: {
-          ...prev[exId],
-          [numSerie]: { ...prev[exId][numSerie], [field]: value },
-        },
-      }));
-    },
-    []
-  );
+  const updateSet = useCallback((exId: number, numSerie: number, field: keyof SetState, value: number | boolean | LoadUnit): void => {
+    setSets((prev) => ({
+      ...prev,
+      [exId]: {
+        ...prev[exId],
+        [numSerie]: { ...prev[exId][numSerie], [field]: value, dirty: true },
+      },
+    }));
+  }, []);
 
-  // --------------------------------------------------------------------------
-  // sessionComplete derived value
-  // --------------------------------------------------------------------------
   const sessionComplete =
     !loading &&
     estado !== 'descanso' &&
     exercises.length > 0 &&
     exercises.every((ex) => {
       const exSets = sets[ex.id];
-      if (!exSets) return false;
-      return Array.from({ length: ex.series }).every((_, i) => exSets[i]?.done === true);
+      return !!exSets && Array.from({ length: ex.series }).every((_, i) => exSets[i]?.done === true);
     });
 
-  // --------------------------------------------------------------------------
-  // finishSession — mark completada = 1 (works even with unfinished exercises).
-  // No-op when nothing was logged (no session row yet).
-  // --------------------------------------------------------------------------
   const finishSession = useCallback(async (): Promise<void> => {
     if (sessionId === null) return;
-    const db = getDB();
     const elapsedMin = Math.round((Date.now() - startTimeRef.current) / 60000);
-
-    await db.runAsync(
-      `UPDATE workout_sessions
-       SET completada = 1, duracion_min = ?
-       WHERE id = ?`,
-      [elapsedMin, sessionId]
-    );
+    await getDB().runAsync('UPDATE workout_sessions SET completada = 1, duracion_min = ? WHERE id = ?', [elapsedMin, sessionId]);
     setEstado('completada');
   }, [sessionId]);
 
-  // --------------------------------------------------------------------------
-  // selectSession — switch the day to a chosen session type. Discards today's
-  // in-progress (non-completed) work and starts the chosen one fresh.
-  // --------------------------------------------------------------------------
-  const selectSession = useCallback(
-    async (tipo: string): Promise<void> => {
-      await clearTodayNonCompleted();
-      startTimeRef.current = Date.now();
-      await hydrate({ tipo, estado: 'sugerida', sessionId: null });
-    },
-    [clearTodayNonCompleted, hydrate]
-  );
+  const selectSession = useCallback(async (tipo: string): Promise<void> => {
+    await clearTodayNonCompleted();
+    const newSessionId = await createTodaySession(tipo);
+    startTimeRef.current = Date.now();
+    await hydrate({ tipo, estado: 'pendiente', sessionId: newSessionId });
+  }, [clearTodayNonCompleted, createTodaySession, hydrate]);
 
-  // --------------------------------------------------------------------------
-  // markRestDay — record today as a rest day ("didn't go to the gym").
-  // --------------------------------------------------------------------------
   const markRestDay = useCallback(async (): Promise<void> => {
     const db = getDB();
     const fecha = today();
     await clearTodayNonCompleted();
-
     await db.runAsync(
-      `INSERT INTO workout_sessions (fecha, tipo_sesion, completada, es_descanso)
-       VALUES (?, ?, 0, 1)`,
+      'INSERT INTO workout_sessions (fecha, tipo_sesion, completada, es_descanso) VALUES (?, ?, 0, 1)',
       [fecha, tipoSesion]
     );
     const rest = await db.getFirstAsync<{ id: number }>(
-      `SELECT id FROM workout_sessions
-       WHERE fecha = ? AND es_descanso = 1
-       ORDER BY id DESC LIMIT 1`,
+      'SELECT id FROM workout_sessions WHERE fecha = ? AND es_descanso = 1 ORDER BY id DESC LIMIT 1',
       [fecha]
     );
     await hydrate({ tipo: tipoSesion, estado: 'descanso', sessionId: rest?.id ?? null });
   }, [clearTodayNonCompleted, hydrate, tipoSesion]);
 
-  // --------------------------------------------------------------------------
-  // undoRestDay — remove today's rest marker and return to the suggested state.
-  // --------------------------------------------------------------------------
   const undoRestDay = useCallback(async (): Promise<void> => {
     await clearTodayNonCompleted();
-    const t = await resolveTodaySession(getDB());
-    await hydrate(t);
+    await hydrate(await resolveTodaySession(getDB()));
   }, [clearTodayNonCompleted, hydrate]);
 
-  // --------------------------------------------------------------------------
-  // togglePlacas — flip the kg/placas unit for one exercise, then refresh list
-  // --------------------------------------------------------------------------
-  const togglePlacas = useCallback(
-    async (exId: number): Promise<void> => {
-      const db = getDB();
-      await db.runAsync(
-        `UPDATE exercises
-         SET usa_placas = CASE WHEN usa_placas = 1 THEN 0 ELSE 1 END
-         WHERE id = ?`,
-        [exId]
-      );
-      const exs = await loadExercises(tipoSesion);
-      setExercises(exs);
-    },
-    [loadExercises, tipoSesion]
-  );
+  const setExerciseUnit = useCallback(async (exId: number, unit: LoadUnit): Promise<void> => {
+    await getDB().runAsync('UPDATE exercises SET unidad_preferida = ? WHERE id = ?', [unit, exId]);
+    const exs = await loadExercises(tipoSesion);
+    setExercises(exs);
+    setSets((prev) => {
+      const existing = prev[exId];
+      if (!existing) return prev;
+      const nextSets = { ...existing };
+      Object.keys(nextSets).forEach((idx) => {
+        const key = Number(idx);
+        if (!nextSets[key].done) nextSets[key] = { ...nextSets[key], unit };
+      });
+      return { ...prev, [exId]: nextSets };
+    });
+  }, [loadExercises, tipoSesion]);
+
+  const togglePlacas = useCallback(async (exId: number): Promise<void> => {
+    const ex = exercises.find((item) => item.id === exId);
+    await setExerciseUnit(exId, ex?.unidadPreferida === 'placas' ? 'kg' : 'placas');
+  }, [exercises, setExerciseUnit]);
 
   return {
     loading,
@@ -511,11 +406,13 @@ export function useWorkout(): UseWorkoutReturn {
     progressionByExercise,
     sessionComplete,
     completeSet,
+    undoSet,
     updateSet,
     finishSession,
     selectSession,
     markRestDay,
     undoRestDay,
+    setExerciseUnit,
     togglePlacas,
   };
 }

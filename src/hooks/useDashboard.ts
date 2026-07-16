@@ -23,23 +23,9 @@ export interface DashboardData {
     rotation: string[];
     rotationIndex: number;
   };
-  macros: {
-    logHoy: {
-      kcal: number;
-      p: number;
-      c: number;
-      f: number;
-    };
-    target: {
-      kcal: number;
-      p: number;
-      c: number;
-      f: number;
-    };
-  };
-  water: {
-    ml: number;
-    target: number;
+  cardio: {
+    minutos: number;
+    sesiones: number;
   };
   weight: {
     ultimo: number | null;
@@ -101,39 +87,17 @@ export function useDashboard() {
     // 1. Format date label
     const fechaLabel = formatLocalDate(todayStr);
 
-    // 2. Nutrition Log
-    const nutritionRow = await db.getFirstAsync<{
-      kcal: number;
-      p: number;
-      c: number;
-      f: number;
-    }>(
-      `SELECT COALESCE(SUM(nl.gramos * f.kcal_100g / 100), 0) AS kcal,
-              COALESCE(SUM(nl.gramos * f.proteina_100g / 100), 0) AS p,
-              COALESCE(SUM(nl.gramos * f.carbos_100g / 100), 0) AS c,
-              COALESCE(SUM(nl.gramos * f.grasa_100g / 100), 0) AS f
-       FROM nutrition_logs nl
-       JOIN foods f ON f.id = nl.food_id
-       WHERE nl.fecha = ?`,
-      [todayStr]
-    );
-    const logHoy = {
-      kcal: Math.round(nutritionRow?.kcal ?? 0),
-      p: Math.round(nutritionRow?.p ?? 0),
-      c: Math.round(nutritionRow?.c ?? 0),
-      f: Math.round(nutritionRow?.f ?? 0),
-    };
-
-    // 3. Water Log
-    const waterRow = await db.getFirstAsync<{ ml: number }>(
-      `SELECT COALESCE(SUM(ml), 0) AS ml
-       FROM water_logs
+    // 2. Cardio summary
+    const cardioRow = await db.getFirstAsync<{ minutos: number; sesiones: number }>(
+      `SELECT COALESCE(SUM(minutos), 0) AS minutos, COUNT(*) AS sesiones
+       FROM cardio_logs
        WHERE fecha = ?`,
       [todayStr]
     );
-    const water = {
-      ml: waterRow?.ml ?? 0,
-      target: 3000,
+
+    const cardio = {
+      minutos: cardioRow?.minutos ?? 0,
+      sesiones: cardioRow?.sesiones ?? 0,
     };
 
     // 4. Workout session today / rotation
@@ -154,8 +118,8 @@ export function useDashboard() {
     }>(
       `SELECT id, nombre, grupo_muscular, series_objetivo, descanso_seg
        FROM exercises
-       WHERE sesion = ?
-       ORDER BY id ASC`,
+       WHERE sesion = ? AND activo = 1
+       ORDER BY orden ASC, id ASC`,
       [resolvedSessionType]
     );
 
@@ -181,35 +145,7 @@ export function useDashboard() {
       rotationIndex,
     };
 
-    // 5. Daily targets based on completed workout today
-    const resolvedDayType = completed ? 'entreno' : 'descanso';
-    const targetRow = await db.getFirstAsync<{
-      kcal_objetivo: number;
-      proteina_g: number;
-      carbos_g: number;
-      grasa_g: number;
-    }>(
-      `SELECT kcal_objetivo, proteina_g, carbos_g, grasa_g
-       FROM nutrition_targets
-       WHERE tipo_dia = ?`,
-      [resolvedDayType]
-    );
-
-    const target = targetRow
-      ? {
-          kcal: targetRow.kcal_objetivo,
-          p: targetRow.proteina_g,
-          c: targetRow.carbos_g,
-          f: targetRow.grasa_g,
-        }
-      : {
-          kcal: resolvedDayType === 'entreno' ? 2450 : 2300,
-          p: 160,
-          c: resolvedDayType === 'entreno' ? 300 : 265,
-          f: 70,
-        };
-
-    // 6. Weight & Waist metrics
+    // 5. Weight & Waist metrics
     const latestMetric = await db.getFirstAsync<{
       peso_kg: number | null;
       cintura_cm: number | null;
@@ -273,11 +209,7 @@ export function useDashboard() {
     setData({
       fecha: fechaLabel,
       workout,
-      macros: {
-        logHoy,
-        target,
-      },
-      water,
+      cardio,
       weight,
     });
   }, []);

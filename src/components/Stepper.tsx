@@ -17,8 +17,10 @@ export default function Stepper({ value, onChange, step = 1, min = 0, label, uni
 
   const dec = () => onChange(Math.max(min, parseFloat((value - step).toFixed(2))));
   const inc = () => onChange(parseFloat((value + step).toFixed(2)));
+  const decFast = () => onChange(Math.max(min, parseFloat((value - step * 5).toFixed(2))));
+  const incFast = () => onChange(parseFloat((value + step * 5).toFixed(2)));
 
-  const displayValue = value === 0 && unit === 'kg' ? 'BW' : String(value);
+  const displayValue = value === 0 && (unit === 'kg' || unit === 'bw') ? 'BW' : String(value);
 
   return (
     <View style={styles.container}>
@@ -26,21 +28,25 @@ export default function Stepper({ value, onChange, step = 1, min = 0, label, uni
       <View style={styles.row}>
         <TouchableOpacity
           onPress={dec}
+          onLongPress={decFast}
           style={[styles.btn, { borderColor: theme.border2, backgroundColor: theme.bg4 }]}
           hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+          accessibilityRole="button"
         >
           <Text style={[styles.btnText, { color: theme.text1 }]}>−</Text>
         </TouchableOpacity>
         <View style={styles.valueWrap}>
           <Text style={[styles.value, { color: theme.text1 }]}>{displayValue}</Text>
-          {unit && value !== 0 ? (
+          {unit && value !== 0 && unit !== 'bw' ? (
             <Text style={[styles.unit, { color: theme.text3 }]}>{unit}</Text>
           ) : null}
         </View>
         <TouchableOpacity
           onPress={inc}
+          onLongPress={incFast}
           style={[styles.btn, { borderColor: theme.border2, backgroundColor: theme.bg4, borderRadius: RADII.r4 }]}
           hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+          accessibilityRole="button"
         >
           <Text style={[styles.btnText, { color: theme.text1 }]}>+</Text>
         </TouchableOpacity>
