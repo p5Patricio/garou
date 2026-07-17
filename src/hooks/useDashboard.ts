@@ -4,10 +4,8 @@ import { initDB, getDB } from '../db';
 import { weeklyAverage } from '../utils/stats';
 import {
   resolveTodaySession,
-  rotationIndexOf,
-  SESSION_ROTATION,
   type SessionEstado,
-} from '../utils/sessionRotation';
+} from '../utils/workoutSession';
 
 export interface DashboardData {
   fecha: string; // E.g. "Mié, 17 jun"
@@ -20,8 +18,6 @@ export interface DashboardData {
     numSeries: number;
     duracionEstimada: number;
     musclesLabel: string;
-    rotation: string[];
-    rotationIndex: number;
   };
   cardio: {
     minutos: number;
@@ -100,13 +96,12 @@ export function useDashboard() {
       sesiones: cardioRow?.sesiones ?? 0,
     };
 
-    // 4. Workout session today / rotation
+    // 4. Workout session today
     const todaySession = await resolveTodaySession(db);
     const resolvedSessionType = todaySession.tipo;
     const estado = todaySession.estado;
     const completed = estado === 'completada';
     const esDescanso = estado === 'descanso';
-    const rotationIndex = rotationIndexOf(resolvedSessionType);
 
     // Query exercises for the resolved session
     const exercises = await db.getAllAsync<{
@@ -141,8 +136,6 @@ export function useDashboard() {
       numSeries,
       duracionEstimada,
       musclesLabel,
-      rotation: [...SESSION_ROTATION],
-      rotationIndex,
     };
 
     // 5. Weight & Waist metrics

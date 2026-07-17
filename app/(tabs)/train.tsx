@@ -19,7 +19,7 @@ import { RADII, SEMANTIC, useTheme } from '../../src/constants/theme';
 import { useActiveTimer } from '../../src/hooks/useActiveTimer';
 import { useWorkout } from '../../src/hooks/useWorkout';
 import ExerciseHistoryScreen from '../../src/screens/ExerciseHistoryScreen';
-import { SESSION_ROTATION } from '../../src/utils/sessionRotation';
+import { ROUTINE_SESSIONS } from '../../src/utils/workoutSession';
 import type { LoadUnit } from '../../src/types/workout';
 
 interface Expanded {
@@ -505,7 +505,7 @@ export default function TrainScreen() {
         >
           <View style={[styles.pickerCard, { backgroundColor: theme.bg2, borderColor: theme.border }]}>
             <Text style={[styles.pickerTitle, { color: theme.text1 }]}>Elegir sesion de hoy</Text>
-            {SESSION_ROTATION.map((t) => {
+            {ROUTINE_SESSIONS.map((t) => {
               const active = t === tipoSesion;
               return (
                 <TouchableOpacity

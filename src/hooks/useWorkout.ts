@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { getDB, initDB } from '../db';
 import type { LoadUnit, ProgressionResult, SetRow, SetState, SetsMap, UiExercise } from '../types/workout';
 import { isReadyToIncrease } from '../utils/progression';
-import { resolveTodaySession, type SessionEstado, type TodaySession } from '../utils/sessionRotation';
+import { resolveTodaySession, type SessionEstado, type TodaySession } from '../utils/workoutSession';
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);

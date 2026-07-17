@@ -1,13 +1,13 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-export const SESSION_ROTATION = ['Torso A', 'Pierna A', 'Ligero', 'Torso B', 'Pierna B'] as const;
-export type SessionType = (typeof SESSION_ROTATION)[number];
+export const ROUTINE_SESSIONS = ['Torso A', 'Pierna A', 'Ligero', 'Torso B', 'Pierna B'] as const;
+export type SessionType = (typeof ROUTINE_SESSIONS)[number];
 
 // State of today's gym day:
-// - sugerida:   no row for today yet; this is the next session in the rotation
+// - sugerida:   no row for today yet; this is the suggested session based on the weekday
 // - pendiente:  a session is in progress (at least one set logged)
 // - completada: the session was finished (fully or early)
-// - descanso:   the day was marked as "didn't go to the gym"
+// - descanso:   the day was marked as a rest day
 export type SessionEstado = 'sugerida' | 'pendiente' | 'completada' | 'descanso';
 
 export interface TodaySession {
@@ -21,25 +21,14 @@ function todayStr(): string {
 }
 
 /**
- * The next session in the rotation, computed from the last COMPLETED non-rest
- * session. Rest days never advance the rotation. With no history, starts at the
- * top of the rotation.
+ * Returns the suggested routine session type based on the day of the week.
+ * - Monday (1)    -> Torso A
+ * - Tuesday (2)   -> Pierna A
+ * - Wednesday (3) -> Ligero
+ * - Thursday (4)  -> Torso B
+ * - Friday (5)    -> Pierna B
+ * - Saturday (6) / Sunday (0) -> descanso
  */
-export async function nextInRotation(db: SQLiteDatabase): Promise<string> {
-  const lastCompleted = await db.getFirstAsync<{ tipo_sesion: string }>(
-    `SELECT tipo_sesion FROM workout_sessions
-     WHERE completada = 1 AND es_descanso = 0
-     ORDER BY fecha DESC, id DESC LIMIT 1`
-  );
-
-  if (lastCompleted) {
-    const idx = SESSION_ROTATION.indexOf(lastCompleted.tipo_sesion as SessionType);
-    if (idx !== -1) return SESSION_ROTATION[(idx + 1) % SESSION_ROTATION.length];
-  }
-
-  return 'Torso A';
-}
-
 export function getSuggestedRoutine(date: Date): string {
   const day = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
   const mapping = ['descanso', 'Torso A', 'Pierna A', 'Ligero', 'Torso B', 'Pierna B', 'descanso'];
@@ -48,7 +37,7 @@ export function getSuggestedRoutine(date: Date): string {
 
 /**
  * Resolve the state of today's gym day: an existing row (pendiente / completada
- * / descanso) or, when there's no row yet, the suggested next session.
+ * / descanso) or, when there's no row yet, the suggested session based on the weekday.
  */
 export async function resolveTodaySession(db: SQLiteDatabase): Promise<TodaySession> {
   const row = await db.getFirstAsync<{
@@ -74,9 +63,4 @@ export async function resolveTodaySession(db: SQLiteDatabase): Promise<TodaySess
     return { tipo: row.tipo_sesion, estado: 'completada', sessionId: row.id };
   }
   return { tipo: row.tipo_sesion, estado: 'pendiente', sessionId: row.id };
-}
-
-/** Index of a session type within the rotation (-1 if not found). */
-export function rotationIndexOf(tipo: string): number {
-  return SESSION_ROTATION.indexOf(tipo as SessionType);
 }

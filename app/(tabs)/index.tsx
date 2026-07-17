@@ -16,13 +16,8 @@ import { RADII, SEMANTIC, useTheme } from '../../src/constants/theme';
 import { useActiveTimer } from '../../src/hooks/useActiveTimer';
 import { useDashboard } from '../../src/hooks/useDashboard';
 
-const ROTATION_ABBR: Record<string, string> = {
-  'Torso A': 'T.A',
-  'Pierna A': 'P.A',
-  Ligero: 'Lig',
-  'Torso B': 'T.B',
-  'Pierna B': 'P.B',
-};
+const WEEK_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+const WEEK_SESSIONS = ['T.A', 'P.A', 'Lig', '—', 'T.B', 'P.B', '—'];
 
 const ESTADO_TAG: Record<string, string> = {
   sugerida: 'Sugerida hoy',
@@ -103,24 +98,33 @@ export default function HoyScreen() {
             </TouchableOpacity>
           </View>
           <View style={[styles.weekStrip, { borderTopColor: theme.border }]}>
-            {wk.rotation.map((s, i) => {
-              const isCurrent = i === wk.rotationIndex;
+            {WEEK_SESSIONS.map((s, i) => {
+              const todayIndex = (new Date().getDay() + 6) % 7;
+              const isToday = i === todayIndex;
+              const isPast = i < todayIndex;
               return (
-                <View key={s} style={styles.weekDay}>
-                  <Text style={[styles.weekDayLabel, { color: isCurrent ? theme.accent : theme.text4 }]}>
-                    {isCurrent ? 'hoy' : ''}
+                <View key={i} style={styles.weekDay}>
+                  <Text style={[styles.weekDayLabel, { color: isToday ? theme.accent : theme.text4 }]}>
+                    {WEEK_LABELS[i]}
                   </Text>
                   <View
                     style={[
                       styles.weekDayCircle,
                       {
-                        backgroundColor: isCurrent ? theme.accentA : theme.bg3,
-                        borderColor: isCurrent ? theme.accent : 'transparent',
+                        backgroundColor: isPast ? SEMANTIC.greenA : isToday ? theme.accentA : theme.bg3,
+                        borderColor: isToday ? theme.accent : 'transparent',
                       },
                     ]}
                   >
-                    <Text style={[styles.weekDaySession, { color: isCurrent ? theme.accent : theme.text4 }]}>
-                      {ROTATION_ABBR[s] ?? s}
+                    <Text
+                      style={[
+                        styles.weekDaySession,
+                        {
+                          color: isPast ? SEMANTIC.green : isToday ? theme.accent : theme.text4,
+                        },
+                      ]}
+                    >
+                      {s}
                     </Text>
                   </View>
                 </View>
