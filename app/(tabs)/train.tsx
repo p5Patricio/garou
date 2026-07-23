@@ -134,7 +134,37 @@ export default function TrainScreen() {
     }
 
     const timerLabel = ex.nombre.split(' ').slice(0, 2).join(' ');
-    restTimer.start(timerLabel, ex.descansoSeg)
+    const duration = ex.descansoSeg && ex.descansoSeg > 0 ? ex.descansoSeg : 90;
+    restTimer.start(timerLabel, duration)
+      .catch((err) => console.error('[TrainScreen] start rest timer error', err));
+  };
+
+  const handleToggleCircle = async (exId: number, setIdx: number) => {
+    const ex = exercises.find((item) => item.id === exId);
+    const currentSet = sets[exId]?.[setIdx];
+    if (!ex || !currentSet) return;
+
+    if (currentSet.done) {
+      await undoSet(exId, setIdx);
+      setExpanded({ exId, setIdx });
+      return;
+    }
+
+    await completeSet(exId, setIdx, { ...currentSet, done: true });
+
+    if (!sessionStarted) setSessionStarted(true);
+
+    if (setIdx + 1 < ex.series) {
+      setExpanded({ exId, setIdx: setIdx + 1 });
+    } else {
+      const exIndex = exercises.findIndex((item) => item.id === exId);
+      const nextEx = exercises[exIndex + 1];
+      setExpanded(nextEx ? { exId: nextEx.id, setIdx: 0 } : null);
+    }
+
+    const timerLabel = ex.nombre.split(' ').slice(0, 2).join(' ');
+    const duration = ex.descansoSeg && ex.descansoSeg > 0 ? ex.descansoSeg : 90;
+    restTimer.start(timerLabel, duration)
       .catch((err) => console.error('[TrainScreen] start rest timer error', err));
   };
 
@@ -371,7 +401,8 @@ export default function TrainScreen() {
                         activeOpacity={0.72}
                         accessibilityRole="button"
                       >
-                        <View
+                        <TouchableOpacity
+                          onPress={() => handleToggleCircle(ex.id, si)}
                           style={[
                             styles.setCircle,
                             {
@@ -379,13 +410,16 @@ export default function TrainScreen() {
                               borderColor: isExp ? theme.accent : 'transparent',
                             },
                           ]}
+                          activeOpacity={0.7}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Marcar serie ${si + 1} como completada`}
                         >
                           {s.done ? (
                             <Icon name="check" size={13} color={SEMANTIC.green} strokeW={2.5} />
                           ) : (
                             <Text style={[styles.setNum, { color: isExp ? theme.accent : theme.text3 }]}>{si + 1}</Text>
                           )}
-                        </View>
+                        </TouchableOpacity>
                         <View style={{ flex: 1 }}>
                           <Text style={[styles.setWeightReps, { color: s.done ? theme.text3 : theme.text1 }]}>
                             {formatSet(s.weight, s.unit, s.reps)}

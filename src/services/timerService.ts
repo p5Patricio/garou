@@ -54,66 +54,78 @@ function decodeNotificationIds(value: string | null): Array<{ type: 'expo' | 'no
 }
 
 async function ensureNotifications(kind: TimerKind): Promise<void> {
-  const mod = getNotifications();
-  if (!mod || configuredKinds.has(kind)) return;
-  mod.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
-  });
-  await mod.requestPermissionsAsync().catch(() => {});
-  await mod.setNotificationChannelAsync(`${kind}-timer`, {
-    name: kind === 'rest' ? 'Descanso entre series' : 'Cardio',
-    importance: mod.AndroidImportance.HIGH,
-    sound: 'default',
-    vibrationPattern: [0, 250, 250, 250],
-  }).catch(() => {});
-  configuredKinds.add(kind);
+  try {
+    const mod = getNotifications();
+    if (!mod || configuredKinds.has(kind)) return;
+    mod.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
+    await mod.requestPermissionsAsync().catch(() => {});
+    await mod.setNotificationChannelAsync(`${kind}-timer`, {
+      name: kind === 'rest' ? 'Descanso entre series' : 'Cardio',
+      importance: mod.AndroidImportance.HIGH,
+      sound: 'default',
+      vibrationPattern: [0, 250, 250, 250],
+    }).catch(() => {});
+    configuredKinds.add(kind);
+  } catch {
+    // Ignore notification handler setup errors
+  }
 }
 
 async function ensureNotifee(kind: TimerKind): Promise<string | null> {
-  const mod = getNotifee();
-  if (!mod) return null;
-  const channelId = `${kind}-timer-live`;
-  if (!configuredNotifeeKinds.has(kind)) {
-    await mod.default.requestPermission().catch(() => {});
-    await mod.default.createChannel({
-      id: channelId,
-      name: kind === 'rest' ? 'Descanso en vivo' : 'Cardio en vivo',
-      importance: mod.AndroidImportance.DEFAULT,
-      vibration: false,
-    }).catch(() => {});
-    configuredNotifeeKinds.add(kind);
+  try {
+    const mod = getNotifee();
+    if (!mod) return null;
+    const channelId = `${kind}-timer-live`;
+    if (!configuredNotifeeKinds.has(kind)) {
+      await mod.default.requestPermission().catch(() => {});
+      await mod.default.createChannel({
+        id: channelId,
+        name: kind === 'rest' ? 'Descanso en vivo' : 'Cardio en vivo',
+        importance: mod.AndroidImportance.DEFAULT,
+        vibration: false,
+      }).catch(() => {});
+      configuredNotifeeKinds.add(kind);
+    }
+    return channelId;
+  } catch {
+    return null;
   }
-  return channelId;
 }
 
 async function cancelNotification(notificationId: string | null): Promise<void> {
-  const ids = decodeNotificationIds(notificationId);
-  const expo = getNotifications();
-  const notifee = getNotifee();
-  for (const item of ids) {
-    if (item.type === 'expo' && expo) {
-      await expo.cancelScheduledNotificationAsync(item.id).catch(() => {});
+  try {
+    const ids = decodeNotificationIds(notificationId);
+    const expo = getNotifications();
+    const notifee = getNotifee();
+    for (const item of ids) {
+      if (item.type === 'expo' && expo) {
+        await expo.cancelScheduledNotificationAsync(item.id).catch(() => {});
+      }
+      if (item.type === 'notifee' && notifee) {
+        await notifee.default.cancelNotification(item.id).catch(() => {});
+        await notifee.default.cancelTriggerNotification(item.id).catch(() => {});
+      }
     }
-    if (item.type === 'notifee' && notifee) {
-      await notifee.default.cancelNotification(item.id).catch(() => {});
-      await notifee.default.cancelTriggerNotification(item.id).catch(() => {});
-    }
+  } catch {
+    // Ignore notification cancellation errors
   }
 }
 
 async function scheduleExpoEndNotification(kind: TimerKind, label: string, seconds: number): Promise<string | null> {
-  const mod = getNotifications();
-  if (!mod || seconds <= 0) return null;
-  await ensureNotifications(kind);
-  const title = kind === 'rest' ? 'Descanso terminado' : 'Cardio terminado';
-  const body = kind === 'rest' ? `Retoma la sesion - ${label}` : `Cardio completado - ${label}`;
   try {
+    const mod = getNotifications();
+    if (!mod || seconds <= 0) return null;
+    await ensureNotifications(kind);
+    const title = kind === 'rest' ? 'Descanso terminado' : 'Cardio terminado';
+    const body = kind === 'rest' ? `Retoma la sesion - ${label}` : `Cardio completado - ${label}`;
     return await mod.scheduleNotificationAsync({
       content: { title, body, sound: true, data: { type: `${kind}-timer` } },
       trigger: {
@@ -128,17 +140,17 @@ async function scheduleExpoEndNotification(kind: TimerKind, label: string, secon
 }
 
 async function scheduleNotifeeTimer(kind: TimerKind, label: string, endAtMs: number): Promise<string | null> {
-  const mod = getNotifee();
-  const channelId = await ensureNotifee(kind);
-  if (!mod || !channelId) return null;
-
-  const notificationId = `garou-${kind}-timer`;
-  const title = kind === 'rest' ? 'Descanso en curso' : 'Cardio en curso';
-  const doneTitle = kind === 'rest' ? 'Descanso terminado' : 'Cardio terminado';
-  const body = kind === 'rest' ? `Siguiente serie - ${label}` : `Sesion - ${label}`;
-  const doneBody = kind === 'rest' ? `Retoma la sesion - ${label}` : `Cardio completado - ${label}`;
-
   try {
+    const mod = getNotifee();
+    const channelId = await ensureNotifee(kind);
+    if (!mod || !channelId) return null;
+
+    const notificationId = `garou-${kind}-timer`;
+    const title = kind === 'rest' ? 'Descanso en curso' : 'Cardio en curso';
+    const doneTitle = kind === 'rest' ? 'Descanso terminado' : 'Cardio terminado';
+    const body = kind === 'rest' ? `Siguiente serie - ${label}` : `Sesion - ${label}`;
+    const doneBody = kind === 'rest' ? `Retoma la sesion - ${label}` : `Cardio completado - ${label}`;
+
     await mod.default.displayNotification({
       id: notificationId,
       title,
@@ -181,14 +193,18 @@ async function scheduleNotifeeTimer(kind: TimerKind, label: string, endAtMs: num
 }
 
 async function scheduleNotification(kind: TimerKind, label: string, seconds: number, endAtMs: number): Promise<string | null> {
-  const [notifeeId, expoId] = await Promise.all([
-    scheduleNotifeeTimer(kind, label, endAtMs),
-    scheduleExpoEndNotification(kind, label, seconds),
-  ]);
-  return encodeNotificationIds([
-    { type: 'notifee', id: notifeeId },
-    { type: 'expo', id: expoId },
-  ]);
+  try {
+    const [notifeeId, expoId] = await Promise.all([
+      scheduleNotifeeTimer(kind, label, endAtMs).catch(() => null),
+      scheduleExpoEndNotification(kind, label, seconds).catch(() => null),
+    ]);
+    return encodeNotificationIds([
+      { type: 'notifee', id: notifeeId },
+      { type: 'expo', id: expoId },
+    ]);
+  } catch {
+    return null;
+  }
 }
 
 function mapTimer(row: any): ActiveTimer {
@@ -216,7 +232,7 @@ export async function getActiveTimer(kind: TimerKind): Promise<ActiveTimer | nul
   );
   if (!row) return null;
   if (row.end_at_ms <= Date.now()) {
-    await stopTimer(kind);
+    await stopTimer(kind).catch(() => {});
     return null;
   }
   return mapTimer(row);
@@ -225,15 +241,15 @@ export async function getActiveTimer(kind: TimerKind): Promise<ActiveTimer | nul
 export async function startTimer(kind: TimerKind, label: string, totalSeg: number): Promise<ActiveTimer> {
   await initDB();
   const db = getDB();
-  const existing = await getActiveTimer(kind);
+  const existing = await getActiveTimer(kind).catch(() => null);
   if (existing?.notificationId) {
-    await cancelNotification(existing.notificationId);
+    await cancelNotification(existing.notificationId).catch(() => {});
   }
   await db.runAsync('UPDATE active_timers SET active = 0 WHERE kind = ? AND active = 1', [kind]);
 
   const startedAtMs = Date.now();
   const endAtMs = startedAtMs + totalSeg * 1000;
-  const notificationId = await scheduleNotification(kind, label, totalSeg, endAtMs);
+  const notificationId = await scheduleNotification(kind, label, totalSeg, endAtMs).catch(() => null);
   await db.runAsync(
     `INSERT INTO active_timers (kind, label, started_at_ms, end_at_ms, total_seg, notification_id, active)
      VALUES (?, ?, ?, ?, ?, ?, 1)`,
