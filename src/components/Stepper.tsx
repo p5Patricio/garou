@@ -32,10 +32,11 @@ export default function Stepper({ value, onChange, step = 1, min = 0, label, uni
           style={[styles.btn, { borderColor: theme.border2, backgroundColor: theme.bg4 }]}
           hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
           accessibilityRole="button"
+          accessibilityLabel={`Disminuir ${label ?? 'valor'}`}
         >
           <Text style={[styles.btnText, { color: theme.text1 }]}>−</Text>
         </TouchableOpacity>
-        <View style={styles.valueWrap}>
+        <View style={styles.valueWrap} accessibilityLabel={`${label ?? 'Valor'} ${value}`}>
           <Text style={[styles.value, { color: theme.text1 }]}>{displayValue}</Text>
           {unit && value !== 0 && unit !== 'bw' ? (
             <Text style={[styles.unit, { color: theme.text3 }]}>{unit}</Text>
@@ -47,6 +48,7 @@ export default function Stepper({ value, onChange, step = 1, min = 0, label, uni
           style={[styles.btn, { borderColor: theme.border2, backgroundColor: theme.bg4, borderRadius: RADII.r4 }]}
           hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
           accessibilityRole="button"
+          accessibilityLabel={`Aumentar ${label ?? 'valor'}`}
         >
           <Text style={[styles.btnText, { color: theme.text1 }]}>+</Text>
         </TouchableOpacity>

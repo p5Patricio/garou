@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BtnPrimary from '../../src/components/BtnPrimary';
 import Icon from '../../src/components/Icon';
@@ -35,7 +36,12 @@ interface HistoryModal {
 const UNITS: LoadUnit[] = ['kg', 'placas', 'lb'];
 
 function formatSet(weight: number, unit: LoadUnit, reps: number): string {
-  if (unit === 'bw' || weight === 0) return `BW x ${reps}`;
+  if (unit === 'bw') {
+    if (weight === 0) return `BW x ${reps}`;
+    const sign = weight > 0 ? '+' : '-';
+    return `BW ${sign} ${Math.abs(weight)} kg x ${reps}`;
+  }
+  if (weight === 0) return `BW x ${reps}`;
   return `${weight} ${unit} x ${reps}`;
 }
 
@@ -46,6 +52,7 @@ export default function TrainScreen() {
     exercises,
     sets,
     progressionByExercise,
+    lastLoadByExercise,
     sessionComplete,
     completeSet,
     undoSet,
@@ -57,6 +64,7 @@ export default function TrainScreen() {
     setExerciseUnit,
     tipoSesion,
     estado,
+    refresh,
   } = useWorkout();
 
   const restTimer = useActiveTimer('rest');
@@ -65,12 +73,20 @@ export default function TrainScreen() {
   const [sessionStarted, setSessionStarted] = useState(false);
   const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
   const [historyModal, setHistoryModal] = useState<HistoryModal | null>(null);
+  const [isFinishing, setIsFinishing] = useState(false);
 
   useEffect(() => {
     if (!sessionStarted) return;
     const t = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(t);
   }, [sessionStarted]);
+
+  useFocusEffect(
+    useCallback(() => {
+      restTimer.refresh().catch((err) => console.error('[TrainScreen] refresh rest timer error', err));
+      refresh().catch((err) => console.error('[TrainScreen] refresh workout error', err));
+    }, [restTimer.refresh, refresh])
+  );
 
   const totalSeries = useMemo(
     () => exercises.reduce((acc, ex) => acc + ex.series, 0),
@@ -111,15 +127,15 @@ export default function TrainScreen() {
     updateSet(exId, setIdx, 'rir', prev.rir);
   };
 
-  const handleConfirm = async (exId: number, setIdx: number) => {
+  const handleCompleteSet = async (exId: number, setIdx: number) => {
     const ex = exercises.find((item) => item.id === exId);
     const currentSet = sets[exId]?.[setIdx];
     if (!ex || !currentSet) return;
 
     const wasDone = currentSet.done;
     await completeSet(exId, setIdx, { ...currentSet, done: true });
-
     if (!sessionStarted) setSessionStarted(true);
+
     if (wasDone) {
       setExpanded(null);
       return;
@@ -139,10 +155,13 @@ export default function TrainScreen() {
       .catch((err) => console.error('[TrainScreen] start rest timer error', err));
   };
 
+  const handleConfirm = (exId: number, setIdx: number) => {
+    handleCompleteSet(exId, setIdx);
+  };
+
   const handleToggleCircle = async (exId: number, setIdx: number) => {
-    const ex = exercises.find((item) => item.id === exId);
     const currentSet = sets[exId]?.[setIdx];
-    if (!ex || !currentSet) return;
+    if (!currentSet) return;
 
     if (currentSet.done) {
       await undoSet(exId, setIdx);
@@ -150,22 +169,7 @@ export default function TrainScreen() {
       return;
     }
 
-    await completeSet(exId, setIdx, { ...currentSet, done: true });
-
-    if (!sessionStarted) setSessionStarted(true);
-
-    if (setIdx + 1 < ex.series) {
-      setExpanded({ exId, setIdx: setIdx + 1 });
-    } else {
-      const exIndex = exercises.findIndex((item) => item.id === exId);
-      const nextEx = exercises[exIndex + 1];
-      setExpanded(nextEx ? { exId: nextEx.id, setIdx: 0 } : null);
-    }
-
-    const timerLabel = ex.nombre.split(' ').slice(0, 2).join(' ');
-    const duration = ex.descansoSeg && ex.descansoSeg > 0 ? ex.descansoSeg : 90;
-    restTimer.start(timerLabel, duration)
-      .catch((err) => console.error('[TrainScreen] start rest timer error', err));
+    await handleCompleteSet(exId, setIdx);
   };
 
   const handleUndoSet = async (exId: number, setIdx: number) => {
@@ -174,12 +178,25 @@ export default function TrainScreen() {
   };
 
   const handleFinishSession = () => {
+    if (isFinishing) return;
     const msg = sessionComplete
       ? 'Terminar y marcar esta sesion como completada?'
       : 'Hay ejercicios sin completar. Guardar lo registrado y terminar la rutina?';
     Alert.alert('Terminar rutina', msg, [
       { text: 'Cancelar', style: 'cancel' },
-      { text: 'Terminar', onPress: () => finishSession() },
+      {
+        text: 'Terminar',
+        onPress: async () => {
+          setIsFinishing(true);
+          try {
+            await finishSession();
+          } catch (err) {
+            console.error('[TrainScreen] finish session error', err);
+          } finally {
+            setIsFinishing(false);
+          }
+        },
+      },
     ]);
   };
 
@@ -350,7 +367,9 @@ export default function TrainScreen() {
                   <View style={styles.exHeaderRight}>
                     <Text style={[styles.exLastLabel, { color: theme.text3 }]}>Ultima vez</Text>
                     <Text style={[styles.exLastValue, { color: theme.text2 }]}>
-                      {formatSet(prefillWeight, prefillUnit, prefillReps)}
+                      {lastLoadByExercise[ex.id]
+                        ? formatSet(lastLoadByExercise[ex.id].weight, lastLoadByExercise[ex.id].unit, lastLoadByExercise[ex.id].reps)
+                        : formatSet(prefillWeight, prefillUnit, prefillReps)}
                     </Text>
                     <Text style={[styles.historialLink, { color: theme.accent }]}>Historial</Text>
                   </View>
@@ -500,8 +519,8 @@ export default function TrainScreen() {
 
           {estado === 'pendiente' ? (
             <View style={styles.finishWrap}>
-              <BtnPrimary onPress={handleFinishSession} icon="check">
-                {sessionComplete ? 'Finalizar sesion' : 'Terminar rutina'}
+              <BtnPrimary onPress={handleFinishSession} icon="check" disabled={isFinishing}>
+                {isFinishing ? 'Guardando...' : sessionComplete ? 'Finalizar sesion' : 'Terminar rutina'}
               </BtnPrimary>
             </View>
           ) : null}

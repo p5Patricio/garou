@@ -249,11 +249,13 @@ export async function startTimer(kind: TimerKind, label: string, totalSeg: numbe
 
   const startedAtMs = Date.now();
   const endAtMs = startedAtMs + totalSeg * 1000;
-  const notificationId = await scheduleNotification(kind, label, totalSeg, endAtMs).catch(() => null);
+
+  // Persist the timer immediately so the UI can render it without waiting for
+  // notification scheduling (which can be slow on the first call).
   await db.runAsync(
     `INSERT INTO active_timers (kind, label, started_at_ms, end_at_ms, total_seg, notification_id, active)
      VALUES (?, ?, ?, ?, ?, ?, 1)`,
-    [kind, label, startedAtMs, endAtMs, totalSeg, notificationId]
+    [kind, label, startedAtMs, endAtMs, totalSeg, null]
   );
   const row = await db.getFirstAsync<any>(
     `SELECT id, kind, label, started_at_ms, end_at_ms, total_seg, notification_id, active
@@ -263,7 +265,20 @@ export async function startTimer(kind: TimerKind, label: string, totalSeg: numbe
      LIMIT 1`,
     [kind]
   );
-  return mapTimer(row);
+  const timer = mapTimer(row);
+
+  // Schedule notifications in the background and update the row only if it is still active.
+  scheduleNotification(kind, label, totalSeg, endAtMs)
+    .then(async (notificationId) => {
+      if (!notificationId) return;
+      await db.runAsync(
+        'UPDATE active_timers SET notification_id = ? WHERE id = ? AND active = 1',
+        [notificationId, timer.id]
+      );
+    })
+    .catch(() => {});
+
+  return timer;
 }
 
 export async function addTimerSeconds(kind: TimerKind, seconds: number): Promise<ActiveTimer | null> {

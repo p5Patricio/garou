@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { initDB, getDB } from '../db';
+import { todayLocal, daysAgoLocal, shiftLocalDate, parseLocalDate, getDaysBetween } from '../utils/date';
 import { weeklyAverage } from '../utils/stats';
 import {
   resolveTodaySession,
@@ -30,44 +31,9 @@ export interface DashboardData {
   };
 }
 
-function todayLocal(): string {
-  const d = new Date();
-  const offset = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - (offset * 60 * 1000));
-  return local.toISOString().slice(0, 10);
-}
-
-function daysAgoLocal(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  const offset = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - (offset * 60 * 1000));
-  return local.toISOString().slice(0, 10);
-}
-
-function shiftDate(fecha: string, days: number): string {
-  const [y, m, d] = fecha.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  date.setDate(date.getDate() + days);
-  const ny = date.getFullYear();
-  const nm = String(date.getMonth() + 1).padStart(2, '0');
-  const nd = String(date.getDate()).padStart(2, '0');
-  return `${ny}-${nm}-${nd}`;
-}
-
-function getDaysAgo(todayStr: string, targetStr: string): number {
-  const [ty, tm, td] = todayStr.split('-').map(Number);
-  const [ey, em, ed] = targetStr.split('-').map(Number);
-  const tDate = new Date(ty, tm - 1, td);
-  const eDate = new Date(ey, em - 1, ed);
-  const diffMs = tDate.getTime() - eDate.getTime();
-  return Math.round(diffMs / (24 * 60 * 60 * 1000));
-}
-
-function formatLocalDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  const raw = date.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
+function formatDashboardDate(dateStr: string): string {
+  const d = parseLocalDate(dateStr);
+  const raw = d.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
   return raw.charAt(0).toUpperCase() + raw.slice(1).replace(/\./g, '');
 }
 
@@ -81,7 +47,7 @@ export function useDashboard() {
     const todayStr = todayLocal();
 
     // 1. Format date label
-    const fechaLabel = formatLocalDate(todayStr);
+    const fechaLabel = formatDashboardDate(todayStr);
 
     // 2. Cardio summary
     const cardioRow = await db.getFirstAsync<{ minutos: number; sesiones: number }>(
@@ -155,7 +121,7 @@ export function useDashboard() {
 
     if (latestMetric) {
       weightUltimoVal = latestMetric.peso_kg;
-      weightDiasAgo = getDaysAgo(todayStr, latestMetric.fecha);
+      weightDiasAgo = getDaysBetween(todayStr, latestMetric.fecha);
     }
 
     // Weight trend
@@ -183,7 +149,7 @@ export function useDashboard() {
       const prevEntries = resolvedWeightEntries
         .filter((e) => e.fecha >= prevWindowStart && e.fecha <= prevWindowEnd)
         .map((e) => ({
-          fecha: shiftDate(e.fecha, 7),
+          fecha: shiftLocalDate(e.fecha, 7),
           value: e.value,
         }));
       const avgPrevWeek = weeklyAverage(prevEntries, 7);

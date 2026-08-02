@@ -76,6 +76,32 @@ export default function RoutineScreen() {
 
   const saveExercise = async () => {
     if (!editing) return;
+
+    // Validate routine editor
+    const nombre = editing.nombre.trim();
+    if (!nombre) {
+      Alert.alert('Guardar ejercicio', 'El nombre no puede estar vacio.');
+      return;
+    }
+    if (editing.reps_max < editing.reps_min) {
+      Alert.alert('Guardar ejercicio', 'Las reps maximas deben ser mayores o iguales a las minimas.');
+      return;
+    }
+    if (editing.rir_max < editing.rir_min) {
+      Alert.alert('Guardar ejercicio', 'El RIR maximo debe ser mayor o igual al RIR minimo.');
+      return;
+    }
+    if (editing.descanso_seg <= 0) {
+      Alert.alert('Guardar ejercicio', 'El descanso debe ser mayor a 0 segundos.');
+      return;
+    }
+    // Bodyweight only makes sense for free/bodyweight exercises; machines and cables
+    // should use kg, lb or plates.
+    if (editing.unidad_preferida === 'bw' && editing.equipo !== 'libre') {
+      Alert.alert('Guardar ejercicio', 'BW solo es valido para ejercicios con equipo libre.');
+      return;
+    }
+
     if (editing.id === 0) {
       await getDB().runAsync(
         `INSERT INTO exercises (
@@ -199,7 +225,12 @@ export default function RoutineScreen() {
             <Text style={[styles.date, { color: theme.text3 }]}>Rutina fija editable</Text>
             <Text style={[styles.title, { color: theme.text1 }]}>Rutina</Text>
           </View>
-          <TouchableOpacity onPress={addExercise} style={[styles.addBtn, { backgroundColor: theme.accent }]}>
+          <TouchableOpacity
+            onPress={addExercise}
+            style={[styles.addBtn, { backgroundColor: theme.accent }]}
+            accessibilityRole="button"
+            accessibilityLabel="Agregar ejercicio"
+          >
             <Icon name="plus" size={18} color="#fff" strokeW={2.5} />
           </TouchableOpacity>
         </View>
@@ -212,6 +243,9 @@ export default function RoutineScreen() {
                 key={item}
                 onPress={() => setSession(item)}
                 style={[styles.sessionPill, { backgroundColor: active ? theme.accentA : theme.bg3, borderColor: active ? theme.accent : theme.border }]}
+                accessibilityRole="button"
+                accessibilityLabel={`Sesion ${item}`}
+                accessibilityState={{ selected: active }}
               >
                 <Text style={[styles.sessionPillText, { color: active ? theme.accent : theme.text2 }]}>{item}</Text>
               </TouchableOpacity>
@@ -237,14 +271,24 @@ export default function RoutineScreen() {
                   {ex.series_objetivo}x{ex.reps_min}-{ex.reps_max} - RIR {ex.rir_min}-{ex.rir_max} - {Math.round(ex.descanso_seg / 60)} min - {ex.unidad_preferida}
                 </Text>
               </View>
-              <View style={styles.rowActions}>
-                <TouchableOpacity onPress={() => moveExercise(ex, -1)} style={styles.rowActionBtn}>
-                  <Text style={[styles.rowActionText, { color: theme.text3 }]}>Subir</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => moveExercise(ex, 1)} style={styles.rowActionBtn}>
-                  <Text style={[styles.rowActionText, { color: theme.text3 }]}>Bajar</Text>
-                </TouchableOpacity>
-              </View>
+                <View style={styles.rowActions}>
+                  <TouchableOpacity
+                    onPress={() => moveExercise(ex, -1)}
+                    style={styles.rowActionBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel="Mover arriba"
+                  >
+                    <Text style={[styles.rowActionText, { color: theme.text3 }]}>Subir</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => moveExercise(ex, 1)}
+                    style={styles.rowActionBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel="Mover abajo"
+                  >
+                    <Text style={[styles.rowActionText, { color: theme.text3 }]}>Bajar</Text>
+                  </TouchableOpacity>
+                </View>
               <Icon name="chevron" size={16} color={theme.text4} strokeW={2} />
             </TouchableOpacity>
           ))}
@@ -308,13 +352,16 @@ export default function RoutineScreen() {
               <View style={[styles.editCard, { backgroundColor: theme.bg2, borderColor: theme.border }]}>
                 <Text style={[styles.fieldLabel, { color: theme.text3 }]}>Unidad</Text>
                 <View style={styles.unitsRow}>
-                  {UNITS.map((unit) => {
+                    {UNITS.map((unit) => {
                     const active = editing.unidad_preferida === unit;
                     return (
                       <TouchableOpacity
                         key={unit}
                         onPress={() => setEditing({ ...editing, unidad_preferida: unit })}
                         style={[styles.unitBtn, { backgroundColor: active ? theme.accentA : theme.bg3, borderColor: active ? theme.accent : theme.border }]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Unidad ${unit}`}
+                        accessibilityState={{ selected: active }}
                       >
                         <Text style={[styles.unitBtnText, { color: active ? theme.accent : theme.text2 }]}>{unit}</Text>
                       </TouchableOpacity>

@@ -17,6 +17,7 @@ import Stepper from '../../src/components/Stepper';
 import { RADII, SEMANTIC, useTheme } from '../../src/constants/theme';
 import { getDB, initDB } from '../../src/db';
 import { useActiveTimer } from '../../src/hooks/useActiveTimer';
+import { todayLocal, formatLocalDate } from '../../src/utils/date';
 
 interface CardioLog {
   id: number;
@@ -45,20 +46,6 @@ const CARDIO_TIPO_LABEL: Record<string, string> = {
   otro: 'Otro',
 };
 
-function todayLocal(): string {
-  const d = new Date();
-  const offset = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - offset * 60 * 1000);
-  return local.toISOString().slice(0, 10);
-}
-
-function formatLocalDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  const raw = date.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
-  return raw.charAt(0).toUpperCase() + raw.slice(1);
-}
-
 function formatClock(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
@@ -78,10 +65,13 @@ export default function CardioScreen() {
   const [zona, setZona] = useState(2);
 
   const today = useMemo(() => todayLocal(), []);
-  const totalMin = logs.reduce((acc, log) => acc + log.minutos, 0);
-  const timerPct = cardioTimer.total > 0
-    ? Math.min(1, Math.max(0, 1 - cardioTimer.remaining / cardioTimer.total))
-    : 0;
+  const totalMin = useMemo(() => logs.reduce((acc, log) => acc + log.minutos, 0), [logs]);
+  const timerPct = useMemo(
+    () => (cardioTimer.total > 0
+      ? Math.min(1, Math.max(0, 1 - cardioTimer.remaining / cardioTimer.total))
+      : 0),
+    [cardioTimer.total, cardioTimer.remaining]
+  );
 
   const loadCardio = useCallback(async () => {
     try {
@@ -143,7 +133,8 @@ export default function CardioScreen() {
 
   const handleManualSave = async () => {
     await saveCardio(minutos);
-    setTipo('bici');
+    // Keep previous values for repeated manual entries (tipo, minutos, fcPromedio, zona).
+    // Only reset the time to a sensible default so the user sees a fresh entry prompt.
     setMinutos(30);
   };
 

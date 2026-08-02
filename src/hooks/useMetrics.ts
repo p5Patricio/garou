@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { initDB, getDB } from '../db';
+import { todayLocal, daysAgoLocal, shiftLocalDate } from '../utils/date';
 import { weeklyAverage, trendDirection, groupWeeklyAverages } from '../utils/stats';
 import type {
   WeightEntry,
@@ -13,20 +14,6 @@ import type {
   MetricsTrend,
   UseMetricsReturn,
 } from '../types/metrics';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function daysAgo(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
-}
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -105,14 +92,14 @@ export function useMetrics(): UseMetricsReturn {
     // 6. Previous 7-day weight average (days 7–13 back)
     //    Build a shifted dataset by adjusting fecha strings to look like they're
     //    "today" relative to the window function.
-    const prevWindowStart = daysAgo(13);
-    const prevWindowEnd = daysAgo(7);
+    const prevWindowStart = daysAgoLocal(13);
+    const prevWindowEnd = daysAgoLocal(7);
     const prevEntries = resolvedWeightEntries
       .filter((e) => e.fecha >= prevWindowStart && e.fecha <= prevWindowEnd)
       .map((e) => ({
         // Shift dates forward 7 days so weeklyAverage's "last 7 days" window
         // covers them as if they were the current week.
-        fecha: shiftDate(e.fecha, 7),
+        fecha: shiftLocalDate(e.fecha, 7),
         value: e.pesoKg,
       }));
     const resolvedPrevAvg = weeklyAverage(prevEntries, 7);
@@ -313,8 +300,17 @@ export function useMetrics(): UseMetricsReturn {
            peso_kg    = excluded.peso_kg,
            cintura_cm = COALESCE(excluded.cintura_cm, body_metrics.cintura_cm),
            foto_uri   = COALESCE(excluded.foto_uri, body_metrics.foto_uri)`,
-        [today(), data.pesoKg, data.cinturaCm, data.fotoUri]
+        [todayLocal(), data.pesoKg, data.cinturaCm, data.fotoUri]
       );
+      await refresh();
+    },
+    [refresh]
+  );
+
+  const deleteMetric = useCallback(
+    async (id: number): Promise<void> => {
+      const db = getDB();
+      await db.runAsync('DELETE FROM body_metrics WHERE id = ?', [id]);
       await refresh();
     },
     [refresh]
@@ -334,19 +330,9 @@ export function useMetrics(): UseMetricsReturn {
     lastMetric,
     photoEntries,
     saveMetric,
+    deleteMetric,
     refresh,
   };
 }
 
-// ---------------------------------------------------------------------------
-// Internal helper — shift a YYYY-MM-DD date forward by N days
-// ---------------------------------------------------------------------------
-function shiftDate(fecha: string, days: number): string {
-  const [y, m, d] = fecha.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  date.setDate(date.getDate() + days);
-  const ny = date.getFullYear();
-  const nm = String(date.getMonth() + 1).padStart(2, '0');
-  const nd = String(date.getDate()).padStart(2, '0');
-  return `${ny}-${nm}-${nd}`;
-}
+

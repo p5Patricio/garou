@@ -12,7 +12,7 @@ export default function RirSelector({ value, onChange }: RirSelectorProps) {
   const { theme } = useTheme();
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} accessibilityLabel="Selector RIR">
       <Text style={[styles.label, { color: theme.text3 }]}>RIR</Text>
       <View style={styles.row}>
         {[0, 1, 2, 3].map((n) => {
@@ -30,6 +30,9 @@ export default function RirSelector({ value, onChange }: RirSelectorProps) {
                   borderRadius: RADII.r1,
                 },
               ]}
+              accessibilityRole="button"
+              accessibilityLabel={`RIR ${n}`}
+              accessibilityState={{ selected: active }}
             >
               <Text style={[styles.btnText, { color: active ? theme.accent : theme.text2 }]}>{n}</Text>
             </TouchableOpacity>

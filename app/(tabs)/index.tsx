@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../src/components/Icon';
 import SectionLabel from '../../src/components/SectionLabel';
@@ -15,9 +15,23 @@ import StatCard from '../../src/components/StatCard';
 import { RADII, SEMANTIC, useTheme } from '../../src/constants/theme';
 import { useActiveTimer } from '../../src/hooks/useActiveTimer';
 import { useDashboard } from '../../src/hooks/useDashboard';
+import { getSuggestedRoutine, ROUTINE_SESSIONS } from '../../src/utils/workoutSession';
 
 const WEEK_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-const WEEK_SESSIONS = ['T.A', 'P.A', 'Lig', '—', 'T.B', 'P.B', '—'];
+
+function sessionAbbreviation(tipo: string): string {
+  if (tipo === 'descanso') return '—';
+  if (tipo.startsWith('Torso')) return `T.${tipo.slice(-1).toUpperCase()}`;
+  if (tipo.startsWith('Pierna')) return `P.${tipo.slice(-1).toUpperCase()}`;
+  if (tipo === 'Ligero') return 'Lig';
+  return tipo.slice(0, 3);
+}
+
+const WEEK_SESSIONS: string[] = Array.from({ length: 7 }).map((_, i) => {
+  const d = new Date();
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + i);
+  return sessionAbbreviation(getSuggestedRoutine(d));
+});
 
 const ESTADO_TAG: Record<string, string> = {
   sugerida: 'Sugerida hoy',
@@ -39,6 +53,13 @@ export default function HoyScreen() {
   const { data, loading } = useDashboard();
   const restTimer = useActiveTimer('rest');
   const cardioTimer = useActiveTimer('cardio');
+
+  useFocusEffect(
+    useCallback(() => {
+      restTimer.refresh().catch((err) => console.error('[HoyScreen] refresh rest timer error', err));
+      cardioTimer.refresh().catch((err) => console.error('[HoyScreen] refresh cardio timer error', err));
+    }, [restTimer.refresh, cardioTimer.refresh])
+  );
 
   if (loading || !data) {
     return (

@@ -11,13 +11,14 @@ interface SettingsRowProps {
   right?: React.ReactNode;
   onPress?: () => void;
   last?: boolean;
+  disabled?: boolean;
 }
 
-export default function SettingsRow({ icon, iconBg, label, sub, right, onPress, last }: SettingsRowProps) {
+export default function SettingsRow({ icon, iconBg, label, sub, right, onPress, last, disabled }: SettingsRowProps) {
   const { theme } = useTheme();
 
   const inner = (
-    <View style={[styles.row, { borderBottomColor: theme.border, borderBottomWidth: last ? 0 : 1 }]}>
+    <View style={[styles.row, { borderBottomColor: theme.border, borderBottomWidth: last ? 0 : 1, opacity: disabled ? 0.5 : 1 }]}>
       {icon ? (
         <View style={[styles.iconWrap, { backgroundColor: iconBg ?? theme.bg3 }]}>
           <Icon name={icon} size={17} color={theme.text2} strokeW={1.8} />
@@ -27,11 +28,11 @@ export default function SettingsRow({ icon, iconBg, label, sub, right, onPress, 
         <Text style={[styles.label, { color: theme.text1 }]}>{label}</Text>
         {sub ? <Text style={[styles.sub, { color: theme.text3 }]}>{sub}</Text> : null}
       </View>
-      {right ?? (onPress ? <Icon name="chevron" size={16} color={theme.text4} strokeW={2} /> : null)}
+      {right ?? (onPress && !disabled ? <Icon name="chevron" size={16} color={theme.text4} strokeW={2} /> : null)}
     </View>
   );
 
-  if (onPress) {
+  if (onPress && !disabled) {
     return (
       <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
         {inner}

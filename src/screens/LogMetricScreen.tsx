@@ -50,7 +50,7 @@ export default function LogMetricScreen({
 
   const [peso, setPeso] = useState<number>(lastPeso ?? DEFAULT_PESO);
   const [cintura, setCintura] = useState<number>(lastCintura ?? DEFAULT_CINTURA);
-  const [cinturEnabled, setCinturaEnabled] = useState(false);
+  const [cinturaEnabled, setCinturaEnabled] = useState(false);
   const [fotoUri, setFotoUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [weightError, setWeightError] = useState<string | null>(null);
@@ -112,7 +112,7 @@ export default function LogMetricScreen({
     try {
       await onSave(
         peso,
-        cinturEnabled ? cintura : undefined,
+        cinturaEnabled ? cintura : undefined,
         fotoUri ?? undefined
       );
       onClose();
@@ -120,7 +120,7 @@ export default function LogMetricScreen({
       console.error('[LogMetricScreen] save error', err);
       setSaving(false);
     }
-  }, [saving, peso, cintura, cinturEnabled, fotoUri, onSave, onClose]);
+  }, [saving, peso, cintura, cinturaEnabled, fotoUri, onSave, onClose]);
 
   // Derive a short display name from the URI
   const photoLabel = fotoUri
@@ -193,22 +193,22 @@ export default function LogMetricScreen({
                 style={[
                   styles.togglePill,
                   {
-                    backgroundColor: cinturEnabled ? theme.accent : theme.bg4,
+                    backgroundColor: cinturaEnabled ? theme.accent : theme.bg4,
                   },
                 ]}
               >
                 <Text
                   style={[
                     styles.toggleLabel,
-                    { color: cinturEnabled ? '#fff' : theme.text3 },
+                    { color: cinturaEnabled ? '#fff' : theme.text3 },
                   ]}
                 >
-                  {cinturEnabled ? 'Activada' : 'Opcional'}
+                  {cinturaEnabled ? 'Activada' : 'Opcional'}
                 </Text>
               </View>
             </TouchableOpacity>
 
-            {cinturEnabled && (
+            {cinturaEnabled && (
               <View style={styles.stepperWrap}>
                 <Stepper
                   value={cintura}

@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { todayLocal } from './date';
 
 export const ROUTINE_SESSIONS = ['Torso A', 'Pierna A', 'Ligero', 'Torso B', 'Pierna B'] as const;
 export type SessionType = (typeof ROUTINE_SESSIONS)[number];
@@ -14,10 +15,6 @@ export interface TodaySession {
   tipo: string;
   estado: SessionEstado;
   sessionId: number | null;
-}
-
-function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 /**
@@ -50,7 +47,7 @@ export async function resolveTodaySession(db: SQLiteDatabase): Promise<TodaySess
      FROM workout_sessions
      WHERE fecha = ?
      ORDER BY id DESC LIMIT 1`,
-    [todayStr()]
+    [todayLocal()]
   );
 
   if (!row) {

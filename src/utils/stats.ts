@@ -4,6 +4,7 @@
 // All date math uses LOCAL date parsing (not UTC) to match device locale.
 // ---------------------------------------------------------------------------
 
+import { todayLocal } from './date';
 import type { MetricsTrend, WeeklyBucket } from '../types/metrics';
 
 /**
@@ -41,7 +42,7 @@ export function weeklyAverage(
   entries: { fecha: string; value: number }[],
   windowDays = 7
 ): number {
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = todayLocal();
   const [ty, tm, td] = todayStr.split('-').map(Number);
   const todayMs = new Date(ty, tm - 1, td).getTime();
   const windowMs = (windowDays - 1) * 24 * 60 * 60 * 1000;

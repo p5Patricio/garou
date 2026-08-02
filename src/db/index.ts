@@ -14,11 +14,11 @@ async function migrateDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
   const currentVersion = versionRow?.user_version ?? 0;
 
   if (currentVersion === 0) {
-    await db.execAsync('PRAGMA user_version = 9;');
+    await db.execAsync('PRAGMA user_version = 10;');
     return;
   }
 
-  if (currentVersion >= 9) return;
+  if (currentVersion >= 10) return;
 
   if (currentVersion < 1) {
   // Migration 1: add UNIQUE(session_id, exercise_id, num_serie) to set_logs
@@ -204,6 +204,23 @@ async function migrateDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     );`
   );
   await db.execAsync('PRAGMA user_version = 9;');
+  }
+
+  if (currentVersion < 10) {
+  // Migration 10: add started_at_ms to workout_sessions to track real session
+  // duration. ALTER TABLE ADD COLUMN is atomic for optional columns with defaults.
+  const workoutColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(workout_sessions)');
+  const workoutColumnNames = new Set(workoutColumns.map((c) => c.name));
+  if (!workoutColumnNames.has('started_at_ms')) {
+    await db.execAsync('ALTER TABLE workout_sessions ADD COLUMN started_at_ms INTEGER;');
+  }
+  await db.execAsync(
+    `CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );`
+  );
+  await db.execAsync('PRAGMA user_version = 10;');
   }
 }
 

@@ -4,12 +4,13 @@ import * as DocumentPicker from 'expo-document-picker';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { getDB } from '../db';
+import { todayLocal } from '../utils/date';
 import type { BackupFile, UseBackupReturn } from '../types/backup';
 
 const BACKUP_VERSION = 2;
 
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+function backupDateString(): string {
+  return todayLocal();
 }
 
 function confirmImport(): Promise<boolean> {
@@ -58,14 +59,15 @@ export function useBackup(): UseBackupReturn {
         },
       };
 
-      const file = new File(Paths.cache, `garou-gym-backup-${todayISO()}.json`);
-      file.write(JSON.stringify(backup, null, 2));
+      const file = new File(Paths.cache, `garou-gym-backup-${backupDateString()}.json`);
+      await file.write(JSON.stringify(backup, null, 2));
       await Sharing.shareAsync(file.uri, {
         mimeType: 'application/json',
         dialogTitle: 'Guardar respaldo',
         UTI: 'public.json',
       });
       setLastResult('success');
+      Alert.alert('Respaldo', 'El archivo se ha generado y esta listo para compartir.');
     } catch (err: any) {
       setLastResult('error');
       setErrorMsg(err?.message ?? 'Error desconocido al exportar');
@@ -109,6 +111,11 @@ export function useBackup(): UseBackupReturn {
         await db.runAsync('DELETE FROM cardio_logs');
         await db.runAsync('DELETE FROM active_timers');
         await db.runAsync('DELETE FROM exercises');
+
+        // active_timers are intentionally not restored: a backup may be old and the
+        // timers would already be expired. Re-scheduling them is unsafe, so the
+        // table is cleared during import and left empty. This is documented in the
+        // export format as an optional field for future migration only.
 
         for (const row of tables.exercises ?? []) {
           await db.runAsync(
@@ -186,9 +193,12 @@ export function useBackup(): UseBackupReturn {
       });
 
       setLastResult('success');
+      Alert.alert('Importar', 'Respaldo restaurado correctamente.');
     } catch (err: any) {
       setLastResult('error');
-      setErrorMsg(err?.message ?? 'Error desconocido al importar');
+      const msg = err?.message ?? 'Error desconocido al importar';
+      setErrorMsg(msg);
+      Alert.alert('Importar', msg);
     } finally {
       isRunning.current = false;
       setLoading(false);

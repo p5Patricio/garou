@@ -26,6 +26,9 @@ export default function BtnPrimary({ children, onPress, icon, disabled }: BtnPri
           borderRadius: RADII.r2,
         },
       ]}
+      accessibilityRole="button"
+      accessibilityLabel={typeof children === 'string' ? children : 'Boton'}
+      accessibilityState={{ disabled: !!disabled }}
     >
       {icon ? <Icon name={icon} size={18} color={disabled ? theme.text3 : '#fff'} strokeW={2.5} /> : null}
       <Text style={[styles.text, { color: disabled ? theme.text3 : '#fff' }]}>{children}</Text>

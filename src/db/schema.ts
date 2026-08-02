@@ -24,6 +24,7 @@ export const SCHEMA_SQL = `
     fecha TEXT NOT NULL,
     tipo_sesion TEXT NOT NULL,
     duracion_min INTEGER,
+    started_at_ms INTEGER,
     notas TEXT,
     completada INTEGER NOT NULL DEFAULT 0,
     es_descanso INTEGER NOT NULL DEFAULT 0,
@@ -73,5 +74,10 @@ export const SCHEMA_SQL = `
     total_seg INTEGER NOT NULL,
     notification_id TEXT,
     active INTEGER NOT NULL DEFAULT 1
+  );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
   );
 `;

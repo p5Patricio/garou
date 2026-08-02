@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
   Image,
   useWindowDimensions,
   Modal,
@@ -58,6 +59,7 @@ export default function ProgressScreen() {
     lastMetric,
     photoEntries,
     saveMetric,
+    deleteMetric,
   } = useMetrics();
 
   const [selectedExerciseId, setSelectedExerciseId] = useState<number | null>(
@@ -73,15 +75,19 @@ export default function ProgressScreen() {
 
   const photoColSize = (width - 40 - 8) / 2;
 
-  const trendArrow =
-    weightTrend === 'up' ? '+' : weightTrend === 'down' ? '-' : '=';
+  const trendArrow = useMemo(
+    () => (weightTrend === 'up' ? '+' : weightTrend === 'down' ? '-' : '='),
+    [weightTrend]
+  );
 
-  const lastPeso = weightEntries.length > 0
-    ? weightEntries[weightEntries.length - 1].pesoKg
-    : null;
-  const lastCintura = waistEntries.length > 0
-    ? waistEntries[waistEntries.length - 1].cinturaCm
-    : null;
+  const lastPeso = useMemo(
+    () => (weightEntries.length > 0 ? weightEntries[weightEntries.length - 1].pesoKg : null),
+    [weightEntries]
+  );
+  const lastCintura = useMemo(
+    () => (waistEntries.length > 0 ? waistEntries[waistEntries.length - 1].cinturaCm : null),
+    [waistEntries]
+  );
 
   const handleSaveMetric = async (
     peso: number | undefined,
@@ -96,20 +102,32 @@ export default function ProgressScreen() {
   };
 
   // Strength chart data for the selected exercise
-  const selectedStrengthPoints =
-    selectedExerciseId !== null
-      ? (strengthByExercise[selectedExerciseId] ?? [])
-      : [];
-  const selectedExercise = strengthExercises.find((e) => e.id === selectedExerciseId);
+  const selectedStrengthPoints = useMemo(
+    () => (selectedExerciseId !== null ? (strengthByExercise[selectedExerciseId] ?? []) : []),
+    [selectedExerciseId, strengthByExercise]
+  );
+  const selectedExercise = useMemo(
+    () => strengthExercises.find((e) => e.id === selectedExerciseId),
+    [selectedExerciseId, strengthExercises]
+  );
   const selectedExerciseName = selectedExercise?.nombre ?? '';
   const unitLabel = selectedExercise?.unidadPreferida === 'bw' ? 'BW' : selectedExercise?.unidadPreferida ?? 'kg';
-  const latestStrength = selectedStrengthPoints[selectedStrengthPoints.length - 1]?.maxPesoKg ?? null;
-  const bestStrength = selectedStrengthPoints.length > 0
-    ? Math.max(...selectedStrengthPoints.map((p) => p.maxPesoKg))
-    : null;
-  const strengthDelta = selectedStrengthPoints.length > 1
-    ? selectedStrengthPoints[selectedStrengthPoints.length - 1].maxPesoKg - selectedStrengthPoints[0].maxPesoKg
-    : null;
+  const latestStrength = useMemo(
+    () => selectedStrengthPoints[selectedStrengthPoints.length - 1]?.maxPesoKg ?? null,
+    [selectedStrengthPoints]
+  );
+  const bestStrength = useMemo(
+    () => (selectedStrengthPoints.length > 0
+      ? Math.max(...selectedStrengthPoints.map((p) => p.maxPesoKg))
+      : null),
+    [selectedStrengthPoints]
+  );
+  const strengthDelta = useMemo(
+    () => (selectedStrengthPoints.length > 1
+      ? selectedStrengthPoints[selectedStrengthPoints.length - 1].maxPesoKg - selectedStrengthPoints[0].maxPesoKg
+      : null),
+    [selectedStrengthPoints]
+  );
 
   if (loading) {
     return (
@@ -257,28 +275,47 @@ export default function ProgressScreen() {
                     },
                   ]}
                 >
-                  {[...weightEntries]
-                    .reverse()
-                    .slice(0, 5)
-                    .map((entry, i, arr) => (
-                      <View
-                        key={entry.fecha}
-                        style={[
-                          styles.listRow,
-                          {
-                            borderBottomColor: theme.border,
-                            borderBottomWidth: i < arr.length - 1 ? 1 : 0,
-                          },
-                        ]}
-                      >
-                        <Text style={[styles.listDate, { color: theme.text3 }]}>
-                          {entry.fecha.slice(5)}
-                        </Text>
-                        <Text style={[styles.listValue, { color: theme.text1 }]}>
-                          {entry.pesoKg.toFixed(1)} kg
-                        </Text>
-                      </View>
-                    ))}
+                  {useMemo(
+                    () => [...weightEntries]
+                      .reverse()
+                      .slice(0, 5)
+                      .map((entry, i, arr) => (
+                        <TouchableOpacity
+                          key={entry.id}
+                          onLongPress={() => {
+                            Alert.alert(
+                              'Eliminar registro',
+                              `Eliminar peso de ${entry.pesoKg.toFixed(1)} kg del ${entry.fecha}?`,
+                              [
+                                { text: 'Cancelar', style: 'cancel' },
+                                {
+                                  text: 'Eliminar',
+                                  style: 'destructive',
+                                  onPress: () => deleteMetric(entry.id),
+                                },
+                              ]
+                            );
+                          }}
+                          style={[
+                            styles.listRow,
+                            {
+                              borderBottomColor: theme.border,
+                              borderBottomWidth: i < arr.length - 1 ? 1 : 0,
+                            },
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Peso ${entry.pesoKg.toFixed(1)} kg, mantener presionado para eliminar`}
+                        >
+                          <Text style={[styles.listDate, { color: theme.text3 }]}>
+                            {entry.fecha.slice(5)}
+                          </Text>
+                          <Text style={[styles.listValue, { color: theme.text1 }]}>
+                            {entry.pesoKg.toFixed(1)} kg
+                          </Text>
+                        </TouchableOpacity>
+                      )),
+                    [weightEntries, deleteMetric, theme.border]
+                  )}
                 </View>
               </>
             )}
@@ -572,6 +609,63 @@ export default function ProgressScreen() {
                   <BtnPrimary icon="plus" onPress={() => setLogModalVisible(true)}>
                     Registrar medidas hoy
                   </BtnPrimary>
+                </View>
+
+                <SectionLabel>Registros recientes</SectionLabel>
+                <View
+                  style={[
+                    styles.listCard,
+                    {
+                      backgroundColor: theme.bg2,
+                      borderColor: theme.border,
+                      borderRadius: RADII.r2,
+                      marginHorizontal: 20,
+                      marginBottom: 14,
+                      overflow: 'hidden',
+                    },
+                  ]}
+                >
+                  {useMemo(
+                    () => [...waistEntries]
+                      .reverse()
+                      .slice(0, 5)
+                      .map((entry, i, arr) => (
+                        <TouchableOpacity
+                          key={entry.id}
+                          onLongPress={() => {
+                            Alert.alert(
+                              'Eliminar registro',
+                              `Eliminar cintura de ${entry.cinturaCm.toFixed(1)} cm del ${entry.fecha}?`,
+                              [
+                                { text: 'Cancelar', style: 'cancel' },
+                                {
+                                  text: 'Eliminar',
+                                  style: 'destructive',
+                                  onPress: () => deleteMetric(entry.id),
+                                },
+                              ]
+                            );
+                          }}
+                          style={[
+                            styles.listRow,
+                            {
+                              borderBottomColor: theme.border,
+                              borderBottomWidth: i < arr.length - 1 ? 1 : 0,
+                            },
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Cintura ${entry.cinturaCm.toFixed(1)} cm, mantener presionado para eliminar`}
+                        >
+                          <Text style={[styles.listDate, { color: theme.text3 }]}>
+                            {entry.fecha.slice(5)}
+                          </Text>
+                          <Text style={[styles.listValue, { color: theme.text1 }]}>
+                            {entry.cinturaCm.toFixed(1)} cm
+                          </Text>
+                        </TouchableOpacity>
+                      )),
+                    [waistEntries, deleteMetric, theme.border]
+                  )}
                 </View>
               </>
             )}

@@ -20,18 +20,27 @@ Diseñada bajo un enfoque totalmente local (*offline-first*), la aplicación pri
 ## 🚀 Características Clave
 
 ### 🏋️ Registro de Entrenamiento Inteligente
-*   **Doble Progresión Calculada**: Implementa un algoritmo de progresión (`src/utils/progression.ts`) que analiza tus últimas sesiones. Te indica visualmente cuándo estás listo para subir cargas al haber completado el rango de repeticiones objetivo con RIR $\le$ objetivo durante 2 sesiones consecutivas.
-*   **Sugerencia Basada en Calendario Semanal**: Detecta el día de la semana para proponerte la sesión predefinida correspondiente (Lunes: *Torso A*, Martes: *Pierna A*, Miércoles: *Ligero*, Jueves: *Torso B*, Viernes: *Pierna B*, Sábado/Domingo: *descanso*). Soporta cambio de rutina manual en cualquier momento.
-*   **Registro Veloz predictivo**: Autocompleta automáticamente las cargas y repeticiones basándose en tu última sesión para el ejercicio correspondiente, agilizando el flujo durante tus descansos.
+*   **Doble Progresión Calculada**: Algoritmo (`src/utils/progression.ts`) que analiza tus últimas sesiones completadas y te indica cuándo cumpliste el rango de repeticiones objetivo con el RIR adecuado durante 2 sesiones consecutivas para subir carga.
+*   **Rotación de Sesiones**: La rutina funciona como una rotación fija (`Torso A → Pierna A → Ligero → Torso B → Pierna B`) con días de descanso explícitos, no atada a calendario. Podés cambiar de sesión manualmente cuando lo necesites.
+*   **Registro Veloz Predictivo**: Autocompleta peso, reps y RIR con la última sesión del ejercicio. Al completar una serie, el temporizador de descanso aparece inmediatamente para la siguiente.
+*   **Unidades por Ejercicio**: Soporta `kg`, `lb`, `placas` de máquina y `bw` (peso corporal). Las dominadas, fondos o cualquier ejercicio BW pueden registrar carga añadida o asistida (`BW + 10 kg`, `BW - 5 kg`).
 
 ### 📈 Gráficas y Métricas de Progreso
-*   **Promedio Móvil de Peso**: Calcula el promedio móvil de los últimos 7 días con datos para mitigar fluctuaciones naturales de peso, mostrando además la tendencia semanal (subiendo, bajando o estable).
-*   **Normalización de Fuerza Multiuso**: Convierte y normaliza en memoria unidades mixtas (`lb`, `placas` de máquinas, o peso corporal `bw` utilizando tu último peso registrado) a kilogramos (`kg`) para graficar la progresión de fuerza de manera correcta. Mantiene la visualización de los puntos del gráfico con su valor y unidad originales en las etiquetas.
-*   **Buscador Modal de Ejercicios**: Panel modal vertical translúcido y fluido para seleccionar el ejercicio del que deseas ver el progreso en las gráficas.
+*   **Promedio Móvil de Peso**: Promedio de los últimos 7 días con datos para suavizar fluctuaciones y mostrar tendencia real semana a semana.
+*   **Normalización de Fuerza Multiuso**: Convierte `lb`, `placas` y `bw` a kilogramos en memoria para graficar progresión de fuerza comparando ejercicios con distintas unidades.
+*   **Gestión de Métricas**: Registro de peso, cintura y fotos con posibilidad de eliminar entradas erróneas desde el historial reciente.
+*   **Buscador Modal de Ejercicios**: Panel modal para seleccionar el ejercicio cuyo historial de fuerza querés ver en las gráficas.
 
 ### ⏱️ Temporizador de Descanso Resiliente
-*   **Segundo Plano Notifee**: Temporizador integrado que sigue funcionando en segundo plano y te notifica cuando termina tu descanso.
-*   **Prevención de Duplicados**: Al saltar o cancelar un temporizador, se cancelan tanto la notificación en el cajón de Android como las alarmas programadas en el sistema (`cancelTriggerNotification`), limpiando la base de datos SQLite por completo.
+*   **Inicio Inmediato**: Aparece desde la primera serie completada, con duración tomada del descanso configurado del ejercicio.
+*   **Persistencia y Notificaciones**: El timer se guarda en SQLite y sincroniza al volver a la app. Usa `@notifee/react-native` y `expo-notifications` para notificaciones en segundo plano. Al saltar o cancelar se limpian tanto la notificación como la alarma programada.
+
+### 💾 Respaldo y Restauración Local
+*   **Exportar/Importar JSON**: Desde Ajustes podés exportar toda la base de datos a un archivo JSON y restaurarlo después, útil para cambios de dispositivo o copias de seguridad manuales. El respaldo incluye rutina, sesiones, series, métricas y cardio; los timers activos se descartan al importar por seguridad.
+
+### 🎨 Personalización y Accesibilidad
+*   **Modo Oscuro Persistido**: El tema oscuro y el color de acento se guardan en la base de datos local y se restauran al abrir la app.
+*   **Accesibilidad**: Roles, labels y targets táctiles mínimos de 48×48 dp en los controles principales.
 
 ---
 

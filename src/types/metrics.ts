@@ -62,5 +62,6 @@ export interface UseMetricsReturn {
     cinturaCm: number | null;
     fotoUri: string | null;
   }): Promise<void>;
+  deleteMetric(id: number): Promise<void>;
   refresh(): Promise<void>;
 }

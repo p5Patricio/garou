@@ -99,15 +99,15 @@ export default function SettingsScreen() {
               sub="Restaura desde un archivo JSON"
               onPress={() => { if (!loading) importBackup(); }}
             />
-            <SettingsRow icon="timer" label="Timers" last sub="Descanso y cardio dentro de Garou" onPress={() => {}} />
+            <SettingsRow icon="timer" label="Timers" last sub="Descanso y cardio dentro de Garou" disabled />
           </View>
         </View>
 
         <View style={styles.section}>
           <SectionLabel>Tu plan</SectionLabel>
           <View style={[styles.sectionCard, { backgroundColor: theme.bg2, borderColor: theme.border, borderRadius: RADII.r2 }]}>
-            <SettingsRow icon="dumbbell" label="Rutina activa" sub="Torso/Pierna + dia ligero" onPress={() => {}} />
-            <SettingsRow icon="chart" label="Objetivos de progreso" last sub="Fuerza, adherencia y cambio fisico" onPress={() => {}} />
+            <SettingsRow icon="dumbbell" label="Rutina activa" sub="Torso/Pierna + dia ligero" disabled />
+            <SettingsRow icon="chart" label="Objetivos de progreso" last sub="Fuerza, adherencia y cambio fisico" disabled />
           </View>
         </View>
 

@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { initDB, getDB } from '../db';
 
 export type AccentKey = 'amber' | 'coral' | 'blue';
 
@@ -75,6 +76,7 @@ interface ThemeContextValue {
   setIsDark: (v: boolean) => void;
   accent: AccentKey;
   setAccent: (v: AccentKey) => void;
+  loaded: boolean;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -82,12 +84,61 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [isDark, setIsDark] = useState(true);
   const [accent, setAccent] = useState<AccentKey>('blue');
+  const [loaded, setLoaded] = useState(false);
+
+  // Load persisted theme from SQLite on mount
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        await initDB();
+        const db = getDB();
+        const rows = await db.getAllAsync<{ key: string; value: string }>('SELECT key, value FROM settings');
+        const map: Record<string, string> = {};
+        for (const row of rows) map[row.key] = row.value;
+        if (!cancelled) {
+          if (map.isDark === '0' || map.isDark === 'false') setIsDark(false);
+          else if (map.isDark === '1' || map.isDark === 'true') setIsDark(true);
+          if (map.accent && map.accent in ACCENTS) setAccent(map.accent as AccentKey);
+        }
+      } catch (err) {
+        console.error('[ThemeProvider] load settings error', err);
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
   const theme = buildTheme(isDark, accent);
 
+  const wrappedSetIsDark = (v: boolean) => {
+    setIsDark(v);
+    saveSetting('isDark', String(v));
+  };
+
+  const wrappedSetAccent = (v: AccentKey) => {
+    setAccent(v);
+    saveSetting('accent', v);
+  };
+
   return React.createElement(ThemeContext.Provider, {
-    value: { theme, isDark, setIsDark, accent, setAccent },
+    value: { theme, isDark, setIsDark: wrappedSetIsDark, accent, setAccent: wrappedSetAccent, loaded },
     children,
   });
+}
+
+async function saveSetting(key: string, value: string): Promise<void> {
+  try {
+    await initDB();
+    await getDB().runAsync(
+      'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+      [key, value]
+    );
+  } catch (err) {
+    console.error('[ThemeProvider] save setting error', err);
+  }
 }
 
 export function useTheme(): ThemeContextValue {

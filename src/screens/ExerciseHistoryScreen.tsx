@@ -185,9 +185,15 @@ export default function ExerciseHistoryScreen({ exerciseId, exerciseName, onClos
                         </Text>
                       </View>
                       <Text style={[styles.tableCell, styles.cellPeso, { color: theme.text1 }]}>
-                        {(s.carga_unidad === 'bw' || (s.carga_valor ?? s.peso_kg) === 0)
-                          ? 'BW'
-                          : `${s.carga_valor ?? s.peso_kg} ${s.carga_unidad ?? 'kg'}`}
+                        {(() => {
+                          const val = s.carga_valor ?? s.peso_kg ?? 0;
+                          const unit = (s.carga_unidad ?? 'kg') as string;
+                          if (unit === 'bw' || val === 0) {
+                            if (val === 0) return 'BW';
+                            return `BW ${val > 0 ? '+' : '-'} ${Math.abs(val)} kg`;
+                          }
+                          return `${val} ${unit}`;
+                        })()}
                       </Text>
                       <Text style={[styles.tableCell, styles.cellReps, { color: theme.text1 }]}>
                         {s.reps}
