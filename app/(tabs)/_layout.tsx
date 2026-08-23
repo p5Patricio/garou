@@ -8,7 +8,8 @@ const TABS = [
   { name: 'train', label: 'Entrenar', icon: 'dumbbell' },
   { name: 'cardio', label: 'Cardio', icon: 'bike' },
   { name: 'progress', label: 'Progreso', icon: 'chart' },
-  { name: 'routine', label: 'Rutina', icon: 'settings' },
+  { name: 'routine', label: 'Rutina', icon: 'check' },
+  { name: 'settings', label: 'Ajustes', icon: 'settings' },
 ] as const;
 
 interface RouteObj {
@@ -78,7 +79,7 @@ export default function TabLayout() {
       <Tabs.Screen name="cardio" options={{ title: 'Cardio' }} />
       <Tabs.Screen name="progress" options={{ title: 'Progreso' }} />
       <Tabs.Screen name="routine" options={{ title: 'Rutina' }} />
-      <Tabs.Screen name="settings" options={{ href: null }} />
+      <Tabs.Screen name="settings" options={{ title: 'Ajustes' }} />
     </Tabs>
   );
 }
