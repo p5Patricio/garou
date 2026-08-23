@@ -15,6 +15,8 @@ import StatCard from '../../src/components/StatCard';
 import { RADII, SEMANTIC, useTheme } from '../../src/constants/theme';
 import { useActiveTimer } from '../../src/hooks/useActiveTimer';
 import { useDashboard } from '../../src/hooks/useDashboard';
+import { useActivityCalendar } from '../../src/hooks/useActivityCalendar';
+import ActivityCalendar from '../../src/components/ActivityCalendar';
 import { getSuggestedRoutine, ROUTINE_SESSIONS } from '../../src/utils/workoutSession';
 
 const WEEK_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
@@ -51,6 +53,7 @@ export default function HoyScreen() {
   const { theme } = useTheme();
   const router = useRouter();
   const { data, loading } = useDashboard();
+  const { days: activityDays } = useActivityCalendar();
   const restTimer = useActiveTimer('rest');
   const cardioTimer = useActiveTimer('cardio');
 
@@ -213,6 +216,11 @@ export default function HoyScreen() {
             <Icon name="chart" size={24} color={theme.accent} strokeW={1.8} />
           </View>
         </View>
+
+        <SectionLabel>Actividad</SectionLabel>
+        <View style={[styles.calendarCard, { backgroundColor: theme.bg2, borderColor: theme.border, borderRadius: RADII.r2 }]}>
+          <ActivityCalendar days={activityDays} />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -255,4 +263,5 @@ const styles = StyleSheet.create({
   weightValue: { fontSize: 26, fontWeight: '900', letterSpacing: -0.4 },
   weightSub: { fontSize: 12, marginTop: 2 },
   weightIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  calendarCard: { marginHorizontal: 20, marginBottom: 14, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 16 },
 });
