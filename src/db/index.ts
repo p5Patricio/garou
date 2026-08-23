@@ -1,6 +1,40 @@
 import * as SQLite from 'expo-sqlite';
 import { SCHEMA_SQL } from './schema';
-import { seedDatabase } from './seed';
+import { seedDatabase, EXERCISES } from './seed';
+
+// Continuity map for migration 11 (Rutina de Hipertrofia v3): links each exercise
+// that survives into the new routine back to its previous (nombre, sesion) so the
+// existing row — and the set_logs history/progression tied to its id — is updated
+// in place instead of being replaced. Anything old not listed here is deactivated
+// (never deleted); anything new not listed here is a fresh insert.
+const V3_CONTINUITY: { fromNombre: string; fromSesion: string; toNombre: string; toSesion: string }[] = [
+  { fromNombre: 'Press de banca con barra', fromSesion: 'Torso A', toNombre: 'Press de banca con barra', toSesion: 'Torso A' },
+  { fromNombre: 'Remo con apoyo en pecho', fromSesion: 'Torso A', toNombre: 'Remo con apoyo en pecho', toSesion: 'Torso A' },
+  { fromNombre: 'Press inclinado con mancuernas', fromSesion: 'Torso A', toNombre: 'Press inclinado con mancuernas', toSesion: 'Torso B' },
+  { fromNombre: 'Jalon al pecho', fromSesion: 'Torso A', toNombre: 'Jalon al pecho (neutro o supino)', toSesion: 'Torso A' },
+  { fromNombre: 'Elevaciones laterales con mancuerna', fromSesion: 'Torso A', toNombre: 'Elevaciones laterales', toSesion: 'Torso A' },
+  { fromNombre: 'Sentadilla con barra', fromSesion: 'Pierna A', toNombre: 'Sentadilla con barra alta o hack', toSesion: 'Pierna A' },
+  { fromNombre: 'Prensa de pierna', fromSesion: 'Pierna A', toNombre: 'Prensa de pierna', toSesion: 'Pierna A' },
+  { fromNombre: 'Extension de cuadriceps', fromSesion: 'Pierna A', toNombre: 'Extension de cuadriceps', toSesion: 'Pierna A' },
+  { fromNombre: 'Curl femoral sentado', fromSesion: 'Pierna A', toNombre: 'Curl femoral sentado', toSesion: 'Pierna A' },
+  { fromNombre: 'Elevacion de gemelos de pie', fromSesion: 'Pierna A', toNombre: 'Gemelos de pie', toSesion: 'Pierna A' },
+  { fromNombre: 'Elevaciones laterales', fromSesion: 'Ligero', toNombre: 'Elevaciones laterales', toSesion: 'Ligero' },
+  { fromNombre: 'Pec deck invertido / pajaros', fromSesion: 'Ligero', toNombre: 'Pec deck invertido', toSesion: 'Ligero' },
+  { fromNombre: 'Encogimientos de hombros', fromSesion: 'Ligero', toNombre: 'Encogimientos de hombros', toSesion: 'Ligero' },
+  { fromNombre: 'Curl de muneca', fromSesion: 'Ligero', toNombre: 'Curl de muneca con mancuernas', toSesion: 'Ligero' },
+  { fromNombre: 'Curl inverso', fromSesion: 'Ligero', toNombre: 'Curl inverso', toSesion: 'Ligero' },
+  { fromNombre: 'Crunch en polea', fromSesion: 'Ligero', toNombre: 'Crunch en polea', toSesion: 'Ligero' },
+  { fromNombre: 'Press militar sentado', fromSesion: 'Torso B', toNombre: 'Press militar sentado', toSesion: 'Torso B' },
+  { fromNombre: 'Dominadas / Jalon prono', fromSesion: 'Torso B', toNombre: 'Dominadas o jalon prono', toSesion: 'Torso B' },
+  { fromNombre: 'Remo en polea baja', fromSesion: 'Torso B', toNombre: 'Remo en polea baja (agarre estrecho)', toSesion: 'Torso B' },
+  { fromNombre: 'Curl predicador / inclinado', fromSesion: 'Torso B', toNombre: 'Curl predicador', toSesion: 'Torso B' },
+  { fromNombre: 'Press cerrado / extension sobre cabeza', fromSesion: 'Torso B', toNombre: 'Press frances con barra Z', toSesion: 'Torso B' },
+  { fromNombre: 'Peso muerto rumano', fromSesion: 'Pierna B', toNombre: 'Peso muerto rumano', toSesion: 'Pierna B' },
+  { fromNombre: 'Sentadilla hack o prensa', fromSesion: 'Pierna B', toNombre: 'Sentadilla hack o prensa', toSesion: 'Pierna B' },
+  { fromNombre: 'Empuje de cadera', fromSesion: 'Pierna B', toNombre: 'Empuje de cadera (Hip Thrust)', toSesion: 'Pierna B' },
+  { fromNombre: 'Elevacion de gemelos de pie', fromSesion: 'Pierna B', toNombre: 'Gemelos de pie o en prensa', toSesion: 'Pierna B' },
+  { fromNombre: 'Encogimientos de hombros', fromSesion: 'Pierna B', toNombre: 'Encogimientos de hombros', toSesion: 'Pierna B' },
+];
 
 let _db: SQLite.SQLiteDatabase | null = null;
 let _initPromise: Promise<SQLite.SQLiteDatabase> | null = null;
@@ -14,11 +48,11 @@ async function migrateDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
   const currentVersion = versionRow?.user_version ?? 0;
 
   if (currentVersion === 0) {
-    await db.execAsync('PRAGMA user_version = 10;');
+    await db.execAsync('PRAGMA user_version = 11;');
     return;
   }
 
-  if (currentVersion >= 10) return;
+  if (currentVersion >= 11) return;
 
   if (currentVersion < 1) {
   // Migration 1: add UNIQUE(session_id, exercise_id, num_serie) to set_logs
@@ -221,6 +255,68 @@ async function migrateDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     );`
   );
   await db.execAsync('PRAGMA user_version = 10;');
+  }
+
+  if (currentVersion < 11) {
+  // Migration 11: Rutina de Hipertrofia v3. Never wipes exercises/set_logs (unlike
+  // migrations 4/5) — this device already has real training history. Each exercise
+  // that continues into v3 is UPDATEd in place via V3_CONTINUITY (preserving its id,
+  // so set_logs and progression stay linked); anything dropped from the routine is
+  // deactivated, never deleted; anything genuinely new is inserted.
+  await db.withTransactionAsync(async () => {
+    const existing = await db.getAllAsync<{ id: number; nombre: string; sesion: string }>(
+      'SELECT id, nombre, sesion FROM exercises'
+    );
+    const findExisting = (nombre: string, sesion: string) =>
+      existing.find((e) => e.nombre === nombre && e.sesion === sesion);
+    const updatedIds = new Set<number>();
+
+    for (const map of V3_CONTINUITY) {
+      const oldRow = findExisting(map.fromNombre, map.fromSesion);
+      const newDef = EXERCISES.find((e) => e.nombre === map.toNombre && e.sesion === map.toSesion);
+      if (!oldRow || !newDef) continue; // defensive: skip a mapping that no longer resolves
+      await db.runAsync(
+        `UPDATE exercises SET nombre=?, grupo_muscular=?, equipo=?, sesion=?, orden=?,
+           series_objetivo=?, reps_min=?, reps_max=?, rir_min=?, rir_max=?, rir_objetivo=?,
+           descanso_seg=?, notas_tecnica=?, unidad_preferida=?, superset_group=?, activo=1
+         WHERE id=?`,
+        [
+          newDef.nombre, newDef.grupo_muscular, newDef.equipo, newDef.sesion, newDef.orden,
+          newDef.series_objetivo, newDef.reps_min, newDef.reps_max, newDef.rir_min, newDef.rir_max, newDef.rir_min,
+          newDef.descanso_seg, newDef.notas_tecnica, newDef.unidad_preferida, newDef.superset_group ?? null,
+          oldRow.id,
+        ]
+      );
+      updatedIds.add(oldRow.id);
+    }
+
+    // Deactivate every old exercise that wasn't carried forward into v3.
+    for (const row of existing) {
+      if (!updatedIds.has(row.id)) {
+        await db.runAsync('UPDATE exercises SET activo = 0 WHERE id = ?', [row.id]);
+      }
+    }
+
+    // Insert brand-new v3 exercises (no continuity mapping targets them).
+    const carriedTargets = new Set(V3_CONTINUITY.map((m) => `${m.toNombre}|${m.toSesion}`));
+    for (const def of EXERCISES) {
+      const key = `${def.nombre}|${def.sesion}`;
+      if (carriedTargets.has(key)) continue;
+      await db.runAsync(
+        `INSERT INTO exercises (
+          nombre, grupo_muscular, equipo, sesion, orden,
+          series_objetivo, reps_min, reps_max, rir_min, rir_max, rir_objetivo,
+          descanso_seg, notas_tecnica, unidad_preferida, superset_group, activo
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        [
+          def.nombre, def.grupo_muscular, def.equipo, def.sesion, def.orden,
+          def.series_objetivo, def.reps_min, def.reps_max, def.rir_min, def.rir_max, def.rir_min,
+          def.descanso_seg, def.notas_tecnica, def.unidad_preferida, def.superset_group ?? null,
+        ]
+      );
+    }
+  });
+  await db.execAsync('PRAGMA user_version = 11;');
   }
 }
 
