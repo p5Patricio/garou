@@ -48,11 +48,11 @@ async function migrateDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
   const currentVersion = versionRow?.user_version ?? 0;
 
   if (currentVersion === 0) {
-    await db.execAsync('PRAGMA user_version = 11;');
+    await db.execAsync('PRAGMA user_version = 12;');
     return;
   }
 
-  if (currentVersion >= 11) return;
+  if (currentVersion >= 12) return;
 
   if (currentVersion < 1) {
   // Migration 1: add UNIQUE(session_id, exercise_id, num_serie) to set_logs
@@ -317,6 +317,79 @@ async function migrateDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     }
   });
   await db.execAsync('PRAGMA user_version = 11;');
+  }
+
+  if (currentVersion < 12) {
+  // Migration 12: repair migration 11. Migration 11 called getAllAsync (a read)
+  // as the first statement inside withTransactionAsync — the exact anti-pattern
+  // already documented on migration 5 above ("a read nested inside an open write
+  // transaction... rolled back exercise inserts"). It silently left some v3
+  // exercises missing on devices that had already run migration 11 (this one
+  // included). This migration re-runs the same v3 continuity/insert/deactivate
+  // logic with the read moved outside the transaction, and every step re-runnable
+  // (idempotent) so it safely repairs a partial migration 11 result without
+  // creating duplicates or re-running for devices where 11 already worked fine.
+  const existing = await db.getAllAsync<{ id: number; nombre: string; sesion: string }>(
+    'SELECT id, nombre, sesion FROM exercises'
+  );
+  const findExisting = (nombre: string, sesion: string) =>
+    existing.find((e) => e.nombre === nombre && e.sesion === sesion);
+  const updatedIds = new Set<number>();
+
+  await db.withTransactionAsync(async () => {
+    for (const map of V3_CONTINUITY) {
+      const oldRow = findExisting(map.fromNombre, map.fromSesion);
+      const newDef = EXERCISES.find((e) => e.nombre === map.toNombre && e.sesion === map.toSesion);
+      if (!oldRow || !newDef) continue;
+      await db.runAsync(
+        `UPDATE exercises SET nombre=?, grupo_muscular=?, equipo=?, sesion=?, orden=?,
+           series_objetivo=?, reps_min=?, reps_max=?, rir_min=?, rir_max=?, rir_objetivo=?,
+           descanso_seg=?, notas_tecnica=?, unidad_preferida=?, superset_group=?, activo=1
+         WHERE id=?`,
+        [
+          newDef.nombre, newDef.grupo_muscular, newDef.equipo, newDef.sesion, newDef.orden,
+          newDef.series_objetivo, newDef.reps_min, newDef.reps_max, newDef.rir_min, newDef.rir_max, newDef.rir_min,
+          newDef.descanso_seg, newDef.notas_tecnica, newDef.unidad_preferida, newDef.superset_group ?? null,
+          oldRow.id,
+        ]
+      );
+      updatedIds.add(oldRow.id);
+    }
+
+    // Deactivate every old exercise that wasn't carried forward into v3. Already-
+    // deactivated rows (activo = 0) are just set to 0 again — harmless no-op.
+    for (const row of existing) {
+      if (!updatedIds.has(row.id)) {
+        await db.runAsync('UPDATE exercises SET activo = 0 WHERE id = ?', [row.id]);
+      }
+    }
+  });
+
+  // Insert any v3 exercise still missing, checked against live DB state (not the
+  // pre-migration snapshot above) so a duplicate can never be created here even if
+  // migration 11 already inserted some of these successfully. Deliberately run
+  // outside any transaction — no nested reads inside a write transaction.
+  for (const def of EXERCISES) {
+    const already = await db.getFirstAsync<{ id: number }>(
+      'SELECT id FROM exercises WHERE nombre = ? AND sesion = ?',
+      [def.nombre, def.sesion]
+    );
+    if (already) continue;
+    await db.runAsync(
+      `INSERT INTO exercises (
+        nombre, grupo_muscular, equipo, sesion, orden,
+        series_objetivo, reps_min, reps_max, rir_min, rir_max, rir_objetivo,
+        descanso_seg, notas_tecnica, unidad_preferida, superset_group, activo
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      [
+        def.nombre, def.grupo_muscular, def.equipo, def.sesion, def.orden,
+        def.series_objetivo, def.reps_min, def.reps_max, def.rir_min, def.rir_max, def.rir_min,
+        def.descanso_seg, def.notas_tecnica, def.unidad_preferida, def.superset_group ?? null,
+      ]
+    );
+  }
+
+  await db.execAsync('PRAGMA user_version = 12;');
   }
 }
 
