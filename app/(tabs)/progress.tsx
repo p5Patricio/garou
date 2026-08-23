@@ -28,6 +28,8 @@ import LineChart from '../../src/components/LineChart';
 import BtnPrimary from '../../src/components/BtnPrimary';
 import { useMetrics } from '../../src/hooks/useMetrics';
 import LogMetricScreen from '../../src/screens/LogMetricScreen';
+import { useActivityCalendar } from '../../src/hooks/useActivityCalendar';
+import ActivityCalendar from '../../src/components/ActivityCalendar';
 
 type TabKey = 'peso' | 'fuerza' | 'cintura' | 'fotos';
 
@@ -61,6 +63,8 @@ export default function ProgressScreen() {
     saveMetric,
     deleteMetric,
   } = useMetrics();
+
+  const { days: activityDays } = useActivityCalendar();
 
   const [selectedExerciseId, setSelectedExerciseId] = useState<number | null>(
     defaultExerciseId
@@ -152,6 +156,24 @@ export default function ProgressScreen() {
           >
             <Text style={styles.fabText}>+</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Calendario de actividad */}
+        <SectionLabel>Actividad</SectionLabel>
+        <View
+          style={[
+            styles.chartCard,
+            {
+              backgroundColor: theme.bg2,
+              borderColor: theme.border,
+              borderRadius: RADII.r2,
+              marginHorizontal: 20,
+              marginBottom: 14,
+              paddingVertical: 14,
+            },
+          ]}
+        >
+          <ActivityCalendar days={activityDays} />
         </View>
 
         {/* Tabs */}
