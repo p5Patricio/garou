@@ -43,3 +43,9 @@ yarn-error.*
 # Agent Teams Lite
 .atl/
 
+# Claude Code tooling (local dev only, not part of the app)
+.codegraph/
+.claude/skills/
+.agents/
+skills-lock.json
+
