@@ -1,6 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 import { SCHEMA_SQL } from './schema';
 import { seedDatabase, EXERCISES } from './seed';
+import { reconcileExerciseCatalog } from './reconcileCatalog';
 
 // Continuity map for migration 11 (Rutina de Hipertrofia v3): links each exercise
 // that survives into the new routine back to its previous (nombre, sesion) so the
@@ -412,6 +413,29 @@ export async function initDB(): Promise<SQLite.SQLiteDatabase> {
     await migrateDatabase(db);
 
     await seedDatabase(db);
+
+    // Bring the exercises table in line with the catalog on every launch, so a
+    // device left in a bad state by an older migration repairs itself rather than
+    // needing yet another one-shot migration to chase it. No-op once in sync.
+    //
+    // Skipped once the user can edit their own routine and has done so — that
+    // feature must set catalog_customized = '1' when it lands, or it will fight
+    // this reconcile.
+    try {
+      const customized = await db.getFirstAsync<{ value: string }>(
+        "SELECT value FROM settings WHERE key = 'catalog_customized'"
+      );
+      if (customized?.value !== '1') {
+        const report = await reconcileExerciseCatalog(db);
+        if (report.inserted > 0 || report.deactivated > 0) {
+          console.log('[initDB] catalog reconciled', report);
+        }
+      }
+    } catch (err) {
+      // A reconcile failure must never block app startup — the catalog simply
+      // stays as it is until the next launch.
+      console.error('[initDB] catalog reconcile error', err);
+    }
 
     _db = db;
     return db;
