@@ -363,6 +363,16 @@ export default function TrainScreen() {
                         </View>
                       ) : null}
                     </View>
+                    {progression?.reason ? (
+                      <Text
+                        style={[
+                          styles.progressionReason,
+                          { color: progression.readyToIncrease ? SEMANTIC.green : theme.text3 },
+                        ]}
+                      >
+                        {progression.reason}
+                      </Text>
+                    ) : null}
                   </View>
                   <View style={styles.exHeaderRight}>
                     <Text style={[styles.exLastLabel, { color: theme.text3 }]}>Ultima vez</Text>
@@ -607,6 +617,7 @@ const styles = StyleSheet.create({
   progressionBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
   progressionBadgeText: { fontSize: 11, fontWeight: '800' },
   exChips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  progressionReason: { fontSize: 11, marginTop: 6, lineHeight: 15 },
   exChip: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5 },
   exChipAccent: { fontSize: 11, fontWeight: '700' },
   exChipNeutral: { fontSize: 11, fontWeight: '700' },

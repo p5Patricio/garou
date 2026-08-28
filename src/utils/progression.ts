@@ -12,6 +12,11 @@ import type { SetRow, ExerciseTarget, ProgressionResult } from '../types/workout
  * @param lastTwoSessions  Array of two set arrays: [olderSession, newerSession].
  * @param target           Exercise progression target parameters.
  */
+// sessionIdx 0 = penultima (older of the two), sessionIdx 1 = ultima (newer) —
+// used only to phrase the reason in terms the user actually thinks in
+// ("tu ultima sesion") instead of an opaque "Sesion 1/2".
+const SESSION_LABEL = ['tu penultima sesion', 'tu ultima sesion'];
+
 export function isReadyToIncrease(
   lastTwoSessions: SetRow[][],
   target: ExerciseTarget
@@ -19,26 +24,30 @@ export function isReadyToIncrease(
   if (lastTwoSessions.length < 2) {
     return {
       readyToIncrease: false,
-      reason: 'Sin historial suficiente — se necesitan 2 sesiones completadas',
+      reason: 'Necesitas 2 sesiones completadas de este ejercicio para ver la sugerencia.',
     };
   }
 
   for (let sessionIdx = 0; sessionIdx < 2; sessionIdx++) {
     const session = lastTwoSessions[sessionIdx];
     const completedSets = session.filter((s) => s.completada === 1);
+    const label = SESSION_LABEL[sessionIdx];
 
     if (completedSets.length < target.seriesObjetivo) {
+      const faltan = target.seriesObjetivo - completedSets.length;
       return {
         readyToIncrease: false,
-        reason: `Sesión ${sessionIdx + 1}: series completadas (${completedSets.length}) < objetivo (${target.seriesObjetivo})`,
+        reason: `En ${label} te faltó completar ${faltan} serie${faltan === 1 ? '' : 's'} (hiciste ${completedSets.length} de ${target.seriesObjetivo}).`,
       };
     }
 
-    for (const set of completedSets) {
+    for (let i = 0; i < completedSets.length; i++) {
+      const set = completedSets[i];
       if (set.reps < target.repsMax) {
+        const faltan = target.repsMax - set.reps;
         return {
           readyToIncrease: false,
-          reason: `Sesión ${sessionIdx + 1}: reps (${set.reps}) < reps máx objetivo (${target.repsMax})`,
+          reason: `En ${label}, serie ${i + 1}: te faltaron ${faltan} rep${faltan === 1 ? '' : 's'} para llegar a ${target.repsMax} — mantené el peso.`,
         };
       }
 
@@ -46,7 +55,7 @@ export function isReadyToIncrease(
       if (rir < target.rirObjetivo) {
         return {
           readyToIncrease: false,
-          reason: `Sesión ${sessionIdx + 1}: RIR real (${rir}) < RIR objetivo (${target.rirObjetivo})`,
+          reason: `En ${label}, serie ${i + 1}: llegaste con RIR ${rir} (objetivo ${target.rirObjetivo}) — te faltó margen, mantené el peso.`,
         };
       }
     }
@@ -54,6 +63,6 @@ export function isReadyToIncrease(
 
   return {
     readyToIncrease: true,
-    reason: '2 sesiones completadas en rango máximo con RIR objetivo',
+    reason: `2 sesiones seguidas al tope del rango (${target.repsMax} reps) con RIR ${target.rirObjetivo}+ — subí el peso.`,
   };
 }
