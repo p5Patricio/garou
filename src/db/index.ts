@@ -49,11 +49,11 @@ async function migrateDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
   const currentVersion = versionRow?.user_version ?? 0;
 
   if (currentVersion === 0) {
-    await db.execAsync('PRAGMA user_version = 12;');
+    await db.execAsync('PRAGMA user_version = 13;');
     return;
   }
 
-  if (currentVersion >= 12) return;
+  if (currentVersion >= 13) return;
 
   if (currentVersion < 1) {
   // Migration 1: add UNIQUE(session_id, exercise_id, num_serie) to set_logs
@@ -391,6 +391,27 @@ async function migrateDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
   }
 
   await db.execAsync('PRAGMA user_version = 12;');
+  }
+
+  if (currentVersion < 13) {
+  // Migration 13: link an exercise to its exercises-dataset entry, for the GIF
+  // library. All three nullable, checked with PRAGMA table_info first (same
+  // idempotency guard as migration 8) so a repair-run reconcile pass never
+  // fails on a column that already exists. Never touched by
+  // reconcileExerciseCatalog, which only ever writes the routine-catalog
+  // columns it explicitly lists.
+  const exerciseColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(exercises)');
+  const exerciseColumnNames = new Set(exerciseColumns.map((c) => c.name));
+  if (!exerciseColumnNames.has('dataset_id')) {
+    await db.execAsync('ALTER TABLE exercises ADD COLUMN dataset_id TEXT;');
+  }
+  if (!exerciseColumnNames.has('gif_path')) {
+    await db.execAsync('ALTER TABLE exercises ADD COLUMN gif_path TEXT;');
+  }
+  if (!exerciseColumnNames.has('thumb_path')) {
+    await db.execAsync('ALTER TABLE exercises ADD COLUMN thumb_path TEXT;');
+  }
+  await db.execAsync('PRAGMA user_version = 13;');
   }
 }
 

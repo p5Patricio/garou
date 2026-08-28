@@ -16,7 +16,10 @@ export const SCHEMA_SQL = `
     notas_tecnica TEXT,
     unidad_preferida TEXT NOT NULL DEFAULT 'kg',
     activo INTEGER NOT NULL DEFAULT 1,
-    superset_group TEXT
+    superset_group TEXT,
+    dataset_id TEXT,
+    gif_path TEXT,
+    thumb_path TEXT
   );
 
   CREATE TABLE IF NOT EXISTS workout_sessions (
