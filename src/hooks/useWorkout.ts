@@ -6,7 +6,7 @@ import { isReadyToIncrease } from '../utils/progression';
 import { resolveTodaySession, type SessionEstado, type TodaySession } from '../utils/workoutSession';
 
 const EXERCISE_COLUMNS =
-  'id, nombre, grupo_muscular, equipo, sesion, series_objetivo, reps_min, reps_max, rir_objetivo, rir_min, descanso_seg, notas_tecnica, unidad_preferida, superset_group';
+  'id, nombre, grupo_muscular, equipo, sesion, series_objetivo, reps_min, reps_max, rir_objetivo, rir_min, descanso_seg, notas_tecnica, unidad_preferida, superset_group, gif_path, thumb_path';
 
 function mapExercise(row: any): UiExercise {
   const unit = (row.unidad_preferida ?? 'kg') as LoadUnit;
@@ -25,6 +25,8 @@ function mapExercise(row: any): UiExercise {
     unidadPreferida: unit,
     usaPlacas: unit === 'placas',
     supersetGroup: row.superset_group ?? null,
+    gifPath: row.gif_path ?? null,
+    thumbPath: row.thumb_path ?? null,
   };
 }
 
@@ -82,9 +84,7 @@ export function useWorkout(): UseWorkoutReturn {
 
   const loadExercises = useCallback(async (sessionType: string): Promise<UiExercise[]> => {
     const rows = await getDB().getAllAsync<any>(
-      `SELECT id, nombre, grupo_muscular, equipo, sesion,
-              series_objetivo, reps_min, reps_max, rir_objetivo, rir_min,
-              descanso_seg, notas_tecnica, unidad_preferida, superset_group
+      `SELECT ${EXERCISE_COLUMNS}
        FROM exercises
        WHERE sesion = ? AND activo = 1
        ORDER BY orden ASC, id ASC`,

@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BtnPrimary from '../../src/components/BtnPrimary';
 import Icon from '../../src/components/Icon';
@@ -23,6 +24,7 @@ import { useWorkout } from '../../src/hooks/useWorkout';
 import ExerciseHistoryScreen from '../../src/screens/ExerciseHistoryScreen';
 import { ROUTINE_SESSIONS } from '../../src/utils/workoutSession';
 import type { LoadUnit } from '../../src/types/workout';
+import { datasetMediaUrl } from '../../src/data/exerciseDataset';
 
 interface Expanded {
   exId: number;
@@ -84,6 +86,7 @@ export default function TrainScreen() {
   const [addExerciseOpen, setAddExerciseOpen] = useState(false);
   const [exerciseQuery, setExerciseQuery] = useState('');
   const [searchResults, setSearchResults] = useState<typeof exercises>([]);
+  const [gifViewer, setGifViewer] = useState<{ nombre: string; gifPath: string } | null>(null);
 
   useEffect(() => {
     if (!sessionStarted) return;
@@ -417,6 +420,20 @@ export default function TrainScreen() {
                 >
                   <View style={styles.exHeaderLeft}>
                     <View style={styles.exNameRow}>
+                      {ex.thumbPath ? (
+                        <TouchableOpacity
+                          onPress={() => setGifViewer({ nombre: ex.nombre, gifPath: ex.gifPath ?? ex.thumbPath! })}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Ver referencia visual de ${ex.nombre}`}
+                        >
+                          <Image
+                            source={{ uri: datasetMediaUrl(ex.thumbPath) }}
+                            style={[styles.exThumb, { backgroundColor: theme.bg3 }]}
+                            contentFit="cover"
+                            cachePolicy="disk"
+                          />
+                        </TouchableOpacity>
+                      ) : null}
                       <Text style={[styles.exName, { color: theme.text1 }]}>{ex.nombre}</Text>
                       {progression?.readyToIncrease ? (
                         <View style={[styles.progressionBadge, { backgroundColor: SEMANTIC.greenA }]}>
@@ -848,6 +865,32 @@ export default function TrainScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      <Modal
+        visible={!!gifViewer}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setGifViewer(null)}
+      >
+        <TouchableOpacity
+          style={styles.gifViewerOverlay}
+          activeOpacity={1}
+          onPress={() => setGifViewer(null)}
+        >
+          {gifViewer ? (
+            <View style={[styles.gifViewerCard, { backgroundColor: theme.bg2, borderColor: theme.border }]}>
+              <Text style={[styles.gifViewerTitle, { color: theme.text1 }]}>{gifViewer.nombre}</Text>
+              <Image
+                source={{ uri: datasetMediaUrl(gifViewer.gifPath) }}
+                style={styles.gifViewerImage}
+                contentFit="contain"
+                cachePolicy="disk"
+              />
+              <Text style={[styles.gifViewerHint, { color: theme.text4 }]}>Toca fuera para cerrar</Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -875,6 +918,7 @@ const styles = StyleSheet.create({
   exHeader: { padding: 14, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },
   exHeaderLeft: { flex: 1 },
   exNameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 5 },
+  exThumb: { width: 28, height: 28, borderRadius: 8 },
   exName: { fontSize: 16, fontWeight: '800' },
   progressionBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
   progressionBadgeText: { fontSize: 11, fontWeight: '800' },
@@ -916,6 +960,11 @@ const styles = StyleSheet.create({
   exerciseSearchList: { flexGrow: 0 },
   exerciseSearchSub: { fontSize: 12, marginTop: 2 },
   exerciseSearchEmpty: { textAlign: 'center', paddingVertical: 24, fontSize: 13 },
+  gifViewerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  gifViewerCard: { width: '100%', maxWidth: 360, borderWidth: 1, borderRadius: RADII.r2, padding: 16, alignItems: 'center' },
+  gifViewerTitle: { fontSize: 15, fontWeight: '800', marginBottom: 12, textAlign: 'center' },
+  gifViewerImage: { width: '100%', aspectRatio: 1 },
+  gifViewerHint: { fontSize: 11, marginTop: 12 },
   exChip: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5 },
   exChipAccent: { fontSize: 11, fontWeight: '700' },
   exChipNeutral: { fontSize: 11, fontWeight: '700' },

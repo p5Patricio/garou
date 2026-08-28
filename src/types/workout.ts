@@ -15,6 +15,8 @@ export interface UiExercise {
   unidadPreferida: LoadUnit;
   usaPlacas: boolean;
   supersetGroup: string | null;
+  gifPath: string | null;
+  thumbPath: string | null;
 }
 
 export interface SetState {

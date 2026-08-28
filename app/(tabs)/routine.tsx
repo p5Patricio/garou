@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import BtnPrimary from '../../src/components/BtnPrimary';
 import Icon from '../../src/components/Icon';
 import SectionLabel from '../../src/components/SectionLabel';
@@ -19,6 +20,8 @@ import Stepper from '../../src/components/Stepper';
 import { RADII, useTheme } from '../../src/constants/theme';
 import { getDB, initDB } from '../../src/db';
 import type { LoadUnit } from '../../src/types/workout';
+import ExerciseLibraryScreen from '../../src/screens/ExerciseLibraryScreen';
+import { datasetMediaUrl, type DatasetExercise } from '../../src/data/exerciseDataset';
 
 interface ExerciseRow {
   id: number;
@@ -36,6 +39,9 @@ interface ExerciseRow {
   notas_tecnica: string | null;
   unidad_preferida: LoadUnit;
   superset_group: string | null;
+  dataset_id: string | null;
+  gif_path: string | null;
+  thumb_path: string | null;
 }
 
 const SESSIONS = ['Torso A', 'Pierna A', 'Ligero', 'Torso B', 'Pierna B'] as const;
@@ -47,6 +53,8 @@ export default function RoutineScreen() {
   const [session, setSession] = useState<string>('Torso A');
   const [exercises, setExercises] = useState<ExerciseRow[]>([]);
   const [editing, setEditing] = useState<ExerciseRow | null>(null);
+  const [libraryBrowseOpen, setLibraryBrowseOpen] = useState(false);
+  const [linkingOpen, setLinkingOpen] = useState(false);
 
   const loadExercises = useCallback(async () => {
     try {
@@ -54,7 +62,8 @@ export default function RoutineScreen() {
       const rows = await getDB().getAllAsync<ExerciseRow>(
         `SELECT id, nombre, grupo_muscular, equipo, sesion, orden,
                 series_objetivo, reps_min, reps_max, rir_min, rir_max,
-                descanso_seg, notas_tecnica, unidad_preferida, superset_group
+                descanso_seg, notas_tecnica, unidad_preferida, superset_group,
+                dataset_id, gif_path, thumb_path
          FROM exercises
          WHERE sesion = ? AND activo = 1
          ORDER BY orden ASC, id ASC`,
@@ -107,8 +116,9 @@ export default function RoutineScreen() {
         `INSERT INTO exercises (
           nombre, grupo_muscular, equipo, sesion, orden, series_objetivo,
           reps_min, reps_max, rir_min, rir_max, rir_objetivo,
-          descanso_seg, notas_tecnica, unidad_preferida, activo, superset_group
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+          descanso_seg, notas_tecnica, unidad_preferida, activo, superset_group,
+          dataset_id, gif_path, thumb_path
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
         [
           editing.nombre.trim(),
           editing.grupo_muscular.trim() || 'General',
@@ -125,6 +135,9 @@ export default function RoutineScreen() {
           editing.notas_tecnica,
           editing.unidad_preferida,
           editing.superset_group?.trim() || null,
+          editing.dataset_id,
+          editing.gif_path,
+          editing.thumb_path,
         ]
       );
       setEditing(null);
@@ -176,6 +189,9 @@ export default function RoutineScreen() {
       notas_tecnica: '',
       unidad_preferida: 'kg',
       superset_group: null,
+      dataset_id: null,
+      gif_path: null,
+      thumb_path: null,
     });
   };
 
@@ -207,6 +223,35 @@ export default function RoutineScreen() {
     ]);
   };
 
+  const handleLinkGif = async (entry: DatasetExercise) => {
+    if (!editing) return;
+    setLinkingOpen(false);
+    if (editing.id === 0) {
+      // Not saved yet — hold the link in local state, saveExercise's INSERT
+      // doesn't currently write these columns, so persist it right after.
+      setEditing({ ...editing, dataset_id: entry.id, gif_path: entry.gif, thumb_path: entry.image });
+      return;
+    }
+    await getDB().runAsync(
+      'UPDATE exercises SET dataset_id = ?, gif_path = ?, thumb_path = ? WHERE id = ?',
+      [entry.id, entry.gif, entry.image, editing.id]
+    );
+    setEditing({ ...editing, dataset_id: entry.id, gif_path: entry.gif, thumb_path: entry.image });
+    await loadExercises();
+  };
+
+  const handleUnlinkGif = async () => {
+    if (!editing) return;
+    if (editing.id !== 0) {
+      await getDB().runAsync(
+        'UPDATE exercises SET dataset_id = NULL, gif_path = NULL, thumb_path = NULL WHERE id = ?',
+        [editing.id]
+      );
+      await loadExercises();
+    }
+    setEditing({ ...editing, dataset_id: null, gif_path: null, thumb_path: null });
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={['top']}>
@@ -225,14 +270,24 @@ export default function RoutineScreen() {
             <Text style={[styles.date, { color: theme.text3 }]}>Rutina fija editable</Text>
             <Text style={[styles.title, { color: theme.text1 }]}>Rutina</Text>
           </View>
-          <TouchableOpacity
-            onPress={addExercise}
-            style={[styles.addBtn, { backgroundColor: theme.accent }]}
-            accessibilityRole="button"
-            accessibilityLabel="Agregar ejercicio"
-          >
-            <Icon name="plus" size={18} color="#fff" strokeW={2.5} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => setLibraryBrowseOpen(true)}
+              style={[styles.addBtn, { backgroundColor: theme.bg3 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Explorar libreria de ejercicios"
+            >
+              <Icon name="camera" size={18} color={theme.text2} strokeW={2.2} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={addExercise}
+              style={[styles.addBtn, { backgroundColor: theme.accent }]}
+              accessibilityRole="button"
+              accessibilityLabel="Agregar ejercicio"
+            >
+              <Icon name="plus" size={18} color="#fff" strokeW={2.5} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sessionTabs}>
@@ -262,9 +317,18 @@ export default function RoutineScreen() {
               style={[styles.exerciseRow, { borderBottomColor: theme.border, borderBottomWidth: index < exercises.length - 1 ? 1 : 0 }]}
               accessibilityRole="button"
             >
-              <View style={[styles.orderBadge, { backgroundColor: theme.bg3 }]}>
-                <Text style={[styles.orderText, { color: theme.text3 }]}>{ex.orden}</Text>
-              </View>
+              {ex.thumb_path ? (
+                <Image
+                  source={{ uri: datasetMediaUrl(ex.thumb_path) }}
+                  style={[styles.rowThumb, { backgroundColor: theme.bg3 }]}
+                  contentFit="cover"
+                  cachePolicy="disk"
+                />
+              ) : (
+                <View style={[styles.orderBadge, { backgroundColor: theme.bg3 }]}>
+                  <Text style={[styles.orderText, { color: theme.text3 }]}>{ex.orden}</Text>
+                </View>
+              )}
               <View style={styles.exerciseBody}>
                 <Text style={[styles.exerciseName, { color: theme.text1 }]}>{ex.nombre}</Text>
                 <Text style={[styles.exerciseMeta, { color: theme.text3 }]}>
@@ -341,6 +405,37 @@ export default function RoutineScreen() {
               </View>
 
               <View style={[styles.editCard, { backgroundColor: theme.bg2, borderColor: theme.border }]}>
+                <Text style={[styles.fieldLabel, { color: theme.text3 }]}>Referencia visual</Text>
+                {editing.gif_path ? (
+                  <View style={styles.gifPreviewRow}>
+                    <Image
+                      source={{ uri: datasetMediaUrl(editing.thumb_path ?? editing.gif_path) }}
+                      style={[styles.gifPreview, { backgroundColor: theme.bg3 }]}
+                      contentFit="cover"
+                      cachePolicy="disk"
+                    />
+                    <View style={styles.gifPreviewActions}>
+                      <TouchableOpacity onPress={() => setLinkingOpen(true)} style={styles.gifActionBtn}>
+                        <Text style={[styles.gifActionText, { color: theme.accent }]}>Cambiar</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={handleUnlinkGif} style={styles.gifActionBtn}>
+                        <Text style={[styles.gifActionText, { color: theme.text3 }]}>Quitar</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => setLinkingOpen(true)}
+                    style={[styles.gifLinkBtn, { borderColor: theme.border2, backgroundColor: theme.bg3 }]}
+                    accessibilityRole="button"
+                  >
+                    <Icon name="link" size={16} color={theme.accent} strokeW={2} />
+                    <Text style={[styles.gifLinkBtnText, { color: theme.accent }]}>Vincular GIF de referencia</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <View style={[styles.editCard, { backgroundColor: theme.bg2, borderColor: theme.border }]}>
                 <Stepper value={editing.series_objetivo} onChange={(series_objetivo) => setEditing({ ...editing, series_objetivo })} min={1} step={1} label="Series" />
                 <Stepper value={editing.reps_min} onChange={(reps_min) => setEditing({ ...editing, reps_min })} min={1} step={1} label="Reps min" />
                 <Stepper value={editing.reps_max} onChange={(reps_max) => setEditing({ ...editing, reps_max })} min={editing.reps_min} step={1} label="Reps max" />
@@ -390,6 +485,9 @@ export default function RoutineScreen() {
           </SafeAreaView>
         ) : null}
       </Modal>
+
+      <ExerciseLibraryScreen visible={libraryBrowseOpen} onClose={() => setLibraryBrowseOpen(false)} />
+      <ExerciseLibraryScreen visible={linkingOpen} onClose={() => setLinkingOpen(false)} onSelect={handleLinkGif} />
     </SafeAreaView>
   );
 }
@@ -408,6 +506,23 @@ const styles = StyleSheet.create({
   listCard: { marginHorizontal: 20, borderWidth: 1, borderRadius: RADII.r2, overflow: 'hidden' },
   exerciseRow: { minHeight: 72, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   orderBadge: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  rowThumb: { width: 34, height: 34, borderRadius: 11 },
+  gifLinkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: 48,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: RADII.r1,
+  },
+  gifLinkBtnText: { fontSize: 14, fontWeight: '700' },
+  gifPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  gifPreview: { width: 64, height: 64, borderRadius: RADII.r1 },
+  gifPreviewActions: { gap: 10 },
+  gifActionBtn: { minHeight: 32, justifyContent: 'center' },
+  gifActionText: { fontSize: 13, fontWeight: '700' },
   orderText: { fontSize: 13, fontWeight: '900' },
   exerciseBody: { flex: 1 },
   exerciseName: { fontSize: 15, fontWeight: '800' },
