@@ -11,9 +11,11 @@ interface StatCardProps {
   unit?: string;
   sub?: string;
   accent?: boolean;
+  /** Overrides the value's color (e.g. to show whether a trend moves toward or away from a goal). */
+  valueColor?: string;
 }
 
-export default function StatCard({ icon, label, value, unit, sub, accent }: StatCardProps) {
+export default function StatCard({ icon, label, value, unit, sub, accent, valueColor }: StatCardProps) {
   const { theme } = useTheme();
 
   return (
@@ -25,7 +27,7 @@ export default function StatCard({ icon, label, value, unit, sub, accent }: Stat
         <Text style={[styles.label, { color: theme.text3 }]}>{label}</Text>
       </View>
       <View style={styles.valueRow}>
-        <Text style={[styles.value, { color: theme.text1 }]}>{value}</Text>
+        <Text style={[styles.value, { color: valueColor ?? theme.text1 }]}>{value}</Text>
         {unit ? <Text style={[styles.unit, { color: theme.text3 }]}>{unit}</Text> : null}
       </View>
       {sub ? <Text style={[styles.sub, { color: theme.text3 }]}>{sub}</Text> : null}

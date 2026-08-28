@@ -21,15 +21,19 @@ function formatIsoDate(dateStr: string): string {
 }
 
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme, RADII, MACRO_COLORS } from '../../src/constants/theme';
+import { useTheme, RADII, MACRO_COLORS, SEMANTIC } from '../../src/constants/theme';
 import StatCard from '../../src/components/StatCard';
 import SectionLabel from '../../src/components/SectionLabel';
 import LineChart from '../../src/components/LineChart';
 import BtnPrimary from '../../src/components/BtnPrimary';
 import { useMetrics } from '../../src/hooks/useMetrics';
+import { useGoalWeight } from '../../src/hooks/useGoalWeight';
 import LogMetricScreen from '../../src/screens/LogMetricScreen';
 import { useActivityCalendar } from '../../src/hooks/useActivityCalendar';
 import ActivityCalendar from '../../src/components/ActivityCalendar';
+
+// Away-from-goal red — same color already used for this exact meaning on the Hoy dashboard.
+const AWAY_FROM_GOAL = '#D95240';
 
 type TabKey = 'peso' | 'fuerza' | 'cintura' | 'fotos';
 
@@ -65,6 +69,7 @@ export default function ProgressScreen() {
   } = useMetrics();
 
   const { days: activityDays } = useActivityCalendar();
+  const { goalWeight } = useGoalWeight();
 
   const [selectedExerciseId, setSelectedExerciseId] = useState<number | null>(
     defaultExerciseId
@@ -83,6 +88,14 @@ export default function ProgressScreen() {
     () => (weightTrend === 'up' ? '+' : weightTrend === 'down' ? '-' : '='),
     [weightTrend]
   );
+
+  // Only overrides the trend color when a goal is set — otherwise StatCard keeps
+  // its default neutral color (no goal = no "good/bad direction" judgement).
+  const trendColor = useMemo(() => {
+    if (goalWeight == null || weightAvg <= 0 || weightTrend === 'stable') return undefined;
+    const towardGoal = goalWeight > weightAvg ? weightTrend === 'up' : weightTrend === 'down';
+    return towardGoal ? SEMANTIC.green : AWAY_FROM_GOAL;
+  }, [goalWeight, weightAvg, weightTrend]);
 
   const lastPeso = useMemo(
     () => (weightEntries.length > 0 ? weightEntries[weightEntries.length - 1].pesoKg : null),
@@ -230,8 +243,9 @@ export default function ProgressScreen() {
                       label="Tendencia"
                       value={trendArrow}
                       unit=""
-                      sub="sem. vs sem. anterior"
-                      accent
+                      sub={goalWeight != null ? `meta ${goalWeight} kg` : 'sem. vs sem. anterior'}
+                      accent={trendColor == null}
+                      valueColor={trendColor}
                     />
                   </View>
                 </View>
@@ -273,6 +287,7 @@ export default function ProgressScreen() {
                       points={weeklyWeight.map((b) => b.avg)}
                       color={theme.accent}
                       height={80}
+                      goal={goalWeight}
                     />
                   </View>
                 ) : null}

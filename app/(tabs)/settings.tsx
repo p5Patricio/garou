@@ -1,11 +1,15 @@
-import React, { useEffect } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SectionLabel from '../../src/components/SectionLabel';
 import SettingsRow from '../../src/components/SettingsRow';
 import Toggle from '../../src/components/Toggle';
+import Stepper from '../../src/components/Stepper';
+import BtnPrimary from '../../src/components/BtnPrimary';
+import Icon from '../../src/components/Icon';
 import { RADII, type AccentKey, useTheme } from '../../src/constants/theme';
 import { useBackup } from '../../src/hooks/useBackup';
+import { useGoalWeight } from '../../src/hooks/useGoalWeight';
 
 const ACCENT_COLORS: { key: AccentKey; hex: string; label: string }[] = [
   { key: 'amber', hex: '#D4920A', label: 'Ambar' },
@@ -16,13 +20,32 @@ const ACCENT_COLORS: { key: AccentKey; hex: string; label: string }[] = [
 export default function SettingsScreen() {
   const { theme, isDark, setIsDark, accent, setAccent } = useTheme();
   const { loading, lastResult, errorMsg, exportBackup, importBackup } = useBackup();
+  const { goalWeight, setGoalWeight } = useGoalWeight();
   const accentLabel = ACCENT_COLORS.find((a) => a.key === accent)?.label ?? 'Azul';
+
+  const [goalModalVisible, setGoalModalVisible] = useState(false);
+  const [goalDraft, setGoalDraft] = useState(78);
 
   useEffect(() => {
     if (lastResult === 'error' && errorMsg) {
       Alert.alert('Error', errorMsg);
     }
   }, [lastResult, errorMsg]);
+
+  const openGoalModal = () => {
+    setGoalDraft(goalWeight ?? 78);
+    setGoalModalVisible(true);
+  };
+
+  const saveGoal = async () => {
+    await setGoalWeight(goalDraft);
+    setGoalModalVisible(false);
+  };
+
+  const clearGoal = async () => {
+    await setGoalWeight(null);
+    setGoalModalVisible(false);
+  };
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={['top']}>
@@ -107,9 +130,46 @@ export default function SettingsScreen() {
           <SectionLabel>Tu plan</SectionLabel>
           <View style={[styles.sectionCard, { backgroundColor: theme.bg2, borderColor: theme.border, borderRadius: RADII.r2 }]}>
             <SettingsRow icon="dumbbell" label="Rutina activa" sub="Torso/Pierna + dia ligero" disabled />
+            <SettingsRow
+              icon="weight"
+              label="Peso objetivo"
+              sub={goalWeight != null ? `${goalWeight} kg` : 'Opcional - no definido'}
+              onPress={openGoalModal}
+            />
+            <Text style={[styles.disclaimer, { color: theme.text4 }]}>
+              Tu plan es recomposicion, no un numero fijo en la bascula. Esto solo habilita la
+              linea de meta en la grafica de Progreso — dejalo sin definir si no te sirve.
+            </Text>
             <SettingsRow icon="chart" label="Objetivos de progreso" last sub="Fuerza, adherencia y cambio fisico" disabled />
           </View>
         </View>
+
+        <Modal visible={goalModalVisible} transparent animationType="fade" onRequestClose={() => setGoalModalVisible(false)}>
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.modalCard, { backgroundColor: theme.bg2, borderColor: theme.border, borderRadius: RADII.r3 }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.text1 }]}>Peso objetivo</Text>
+                <TouchableOpacity
+                  onPress={() => setGoalModalVisible(false)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cerrar"
+                >
+                  <Icon name="x" size={20} color={theme.text3} strokeW={2} />
+                </TouchableOpacity>
+              </View>
+              <Stepper value={goalDraft} onChange={setGoalDraft} step={0.5} min={30} unit="kg" />
+              <View style={styles.modalActions}>
+                <BtnPrimary onPress={saveGoal}>Guardar</BtnPrimary>
+                {goalWeight != null ? (
+                  <TouchableOpacity onPress={clearGoal} style={styles.clearGoalBtn}>
+                    <Text style={[styles.clearGoalText, { color: theme.text3 }]}>Quitar objetivo</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         <View style={styles.buildInfo}>
           <Text style={[styles.buildText, { color: theme.text4 }]}>Garou v2 - Expo - React Native - SQLite</Text>
@@ -139,4 +199,11 @@ const styles = StyleSheet.create({
   buildInfo: { paddingTop: 20, paddingHorizontal: 20, alignItems: 'center', gap: 4 },
   buildText: { fontSize: 11 },
   disclaimer: { fontSize: 11, marginHorizontal: 14, marginBottom: 2, fontStyle: 'italic' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 24 },
+  modalCard: { borderWidth: 1, padding: 20, gap: 18 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  modalTitle: { fontSize: 18, fontWeight: '800' },
+  modalActions: { gap: 10 },
+  clearGoalBtn: { alignItems: 'center', paddingVertical: 8, minHeight: 48, justifyContent: 'center' },
+  clearGoalText: { fontSize: 13, fontWeight: '600' },
 });

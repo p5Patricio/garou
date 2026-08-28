@@ -1,5 +1,5 @@
 import React from 'react';
-import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import Svg, { Path, Circle, Line, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { useTheme } from '../constants/theme';
 
 interface LineChartProps {
@@ -7,17 +7,30 @@ interface LineChartProps {
   color: string;
   height?: number;
   dotted?: boolean;
+  /** Optional fixed reference value (e.g. a body-weight goal) drawn as a dashed line. */
+  goal?: number | null;
+  goalColor?: string;
 }
 
-export default function LineChart({ points, color, height = 80, dotted = false }: LineChartProps) {
+export default function LineChart({
+  points,
+  color,
+  height = 80,
+  dotted = false,
+  goal,
+  goalColor,
+}: LineChartProps) {
   const { theme } = useTheme();
 
   if (!points || points.length < 2) return null;
 
   const w = 310;
   const h = height;
-  const minV = Math.min(...points) * 0.998;
-  const maxV = Math.max(...points) * 1.002;
+  const hasGoal = goal != null && Number.isFinite(goal);
+  const rangeMin = hasGoal ? Math.min(...points, goal as number) : Math.min(...points);
+  const rangeMax = hasGoal ? Math.max(...points, goal as number) : Math.max(...points);
+  const minV = rangeMin * 0.998;
+  const maxV = rangeMax * 1.002;
 
   const scaleX = (i: number) => (i / (points.length - 1)) * w;
   const scaleY = (v: number) => h - ((v - minV) / (maxV - minV)) * h * 0.85 - h * 0.08;
@@ -37,6 +50,17 @@ export default function LineChart({ points, color, height = 80, dotted = false }
         </LinearGradient>
       </Defs>
       <Path d={fillD} fill={`url(#${gradId})`} />
+      {hasGoal ? (
+        <Line
+          x1={0}
+          x2={w}
+          y1={scaleY(goal as number)}
+          y2={scaleY(goal as number)}
+          stroke={goalColor ?? theme.text3}
+          strokeWidth={1.5}
+          strokeDasharray="5 4"
+        />
+      ) : null}
       <Path
         d={d}
         fill="none"
