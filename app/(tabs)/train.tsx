@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -60,6 +61,9 @@ export default function TrainScreen() {
     updateSet,
     addWarmupSet,
     removeLastWarmupSet,
+    searchExercises,
+    addExerciseToSession,
+    removeExerciseFromSession,
     finishSession,
     selectSession,
     markRestDay,
@@ -77,6 +81,9 @@ export default function TrainScreen() {
   const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
   const [historyModal, setHistoryModal] = useState<HistoryModal | null>(null);
   const [isFinishing, setIsFinishing] = useState(false);
+  const [addExerciseOpen, setAddExerciseOpen] = useState(false);
+  const [exerciseQuery, setExerciseQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<typeof exercises>([]);
 
   useEffect(() => {
     if (!sessionStarted) return;
@@ -90,6 +97,43 @@ export default function TrainScreen() {
       refresh().catch((err) => console.error('[TrainScreen] refresh workout error', err));
     }, [restTimer.refresh, refresh])
   );
+
+  useEffect(() => {
+    if (!addExerciseOpen) return;
+    let cancelled = false;
+    searchExercises(exerciseQuery)
+      .then((results) => { if (!cancelled) setSearchResults(results); })
+      .catch((err) => console.error('[TrainScreen] search exercises error', err));
+    return () => { cancelled = true; };
+  }, [addExerciseOpen, exerciseQuery, searchExercises]);
+
+  const handleAddExercise = async (exerciseId: number) => {
+    await addExerciseToSession(exerciseId);
+    setAddExerciseOpen(false);
+    setExerciseQuery('');
+  };
+
+  const handleRemoveExercise = (exId: number, nombre: string) => {
+    const exSets = { ...(sets[exId] ?? {}), ...(warmups[exId] ?? {}) };
+    const hasLoggedSets = Object.values(exSets).some((s) => s.done);
+    Alert.alert(
+      'Quitar ejercicio',
+      hasLoggedSets
+        ? `${nombre} tiene series ya registradas hoy. Quitarlo tambien borra ese registro. Continuar?`
+        : `Quitar ${nombre} de la sesion de hoy? Esto no afecta tu rutina, solo hoy.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Quitar',
+          style: 'destructive',
+          onPress: () => {
+            removeExerciseFromSession(exId).catch((err) => console.error('[TrainScreen] remove exercise error', err));
+            if (expanded?.exId === exId) setExpanded(null);
+          },
+        },
+      ]
+    );
+  };
 
   const totalSeries = useMemo(
     () => exercises.reduce((acc, ex) => acc + ex.series, 0),
@@ -365,9 +409,11 @@ export default function TrainScreen() {
               >
                 <TouchableOpacity
                   onPress={() => setHistoryModal({ exerciseId: ex.id, exerciseName: ex.nombre })}
+                  onLongPress={() => handleRemoveExercise(ex.id, ex.nombre)}
                   style={[styles.exHeader, { borderBottomColor: theme.border }]}
                   activeOpacity={0.75}
                   accessibilityRole="button"
+                  accessibilityHint="Manten presionado para quitar el ejercicio de hoy"
                 >
                   <View style={styles.exHeaderLeft}>
                     <View style={styles.exNameRow}>
@@ -676,6 +722,17 @@ export default function TrainScreen() {
             );
           })}
 
+          {estado !== 'descanso' && estado !== 'completada' ? (
+            <TouchableOpacity
+              onPress={() => setAddExerciseOpen(true)}
+              style={[styles.addExerciseBtn, { borderColor: theme.border2, backgroundColor: theme.bg2 }]}
+              accessibilityRole="button"
+            >
+              <Icon name="plus" size={16} color={theme.accent} strokeW={2.2} />
+              <Text style={[styles.addExerciseBtnText, { color: theme.accent }]}>Agregar ejercicio</Text>
+            </TouchableOpacity>
+          ) : null}
+
           {estado === 'pendiente' ? (
             <View style={styles.finishWrap}>
               <BtnPrimary onPress={handleFinishSession} icon="check" disabled={isFinishing}>
@@ -735,6 +792,62 @@ export default function TrainScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <Modal
+        visible={addExerciseOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddExerciseOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setAddExerciseOpen(false)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => {}}
+            style={[styles.pickerCard, styles.addExerciseCard, { backgroundColor: theme.bg2, borderColor: theme.border }]}
+          >
+            <Text style={[styles.pickerTitle, { color: theme.text1 }]}>Agregar ejercicio a hoy</Text>
+            <TextInput
+              value={exerciseQuery}
+              onChangeText={setExerciseQuery}
+              placeholder="Buscar por nombre..."
+              placeholderTextColor={theme.text4}
+              style={[
+                styles.exerciseSearchInput,
+                { backgroundColor: theme.bg3, borderColor: theme.border, color: theme.text1 },
+              ]}
+              autoCorrect={false}
+              accessibilityLabel="Buscar ejercicio"
+            />
+            <ScrollView style={styles.exerciseSearchList} keyboardShouldPersistTaps="handled">
+              {searchResults
+                .filter((r) => !exercises.some((e) => e.id === r.id))
+                .map((r) => (
+                  <TouchableOpacity
+                    key={r.id}
+                    onPress={() => handleAddExercise(r.id)}
+                    style={[styles.pickerRow, { borderColor: theme.border }]}
+                    accessibilityRole="button"
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.pickerRowText, { color: theme.text1 }]}>{r.nombre}</Text>
+                      <Text style={[styles.exerciseSearchSub, { color: theme.text3 }]}>
+                        {r.grupoMuscular} - {r.sesion}
+                      </Text>
+                    </View>
+                    <Icon name="plus" size={16} color={theme.accent} strokeW={2.2} />
+                  </TouchableOpacity>
+                ))}
+              {searchResults.length === 0 ? (
+                <Text style={[styles.exerciseSearchEmpty, { color: theme.text3 }]}>Sin resultados</Text>
+              ) : null}
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -777,6 +890,32 @@ const styles = StyleSheet.create({
   },
   warmupHeaderText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
   warmupAction: { fontSize: 13, fontWeight: '700' },
+  addExerciseBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 14,
+    minHeight: 48,
+    borderWidth: 1,
+    borderRadius: RADII.r2,
+    borderStyle: 'dashed',
+  },
+  addExerciseBtnText: { fontSize: 14, fontWeight: '700' },
+  addExerciseCard: { maxHeight: '75%' },
+  exerciseSearchInput: {
+    marginHorizontal: 14,
+    marginBottom: 8,
+    minHeight: 48,
+    borderWidth: 1,
+    borderRadius: RADII.r1,
+    paddingHorizontal: 14,
+    fontSize: 15,
+  },
+  exerciseSearchList: { flexGrow: 0 },
+  exerciseSearchSub: { fontSize: 12, marginTop: 2 },
+  exerciseSearchEmpty: { textAlign: 'center', paddingVertical: 24, fontSize: 13 },
   exChip: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5 },
   exChipAccent: { fontSize: 11, fontWeight: '700' },
   exChipNeutral: { fontSize: 11, fontWeight: '700' },

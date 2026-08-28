@@ -5,6 +5,9 @@ import { todayLocal } from '../utils/date';
 import { isReadyToIncrease } from '../utils/progression';
 import { resolveTodaySession, type SessionEstado, type TodaySession } from '../utils/workoutSession';
 
+const EXERCISE_COLUMNS =
+  'id, nombre, grupo_muscular, equipo, sesion, series_objetivo, reps_min, reps_max, rir_objetivo, rir_min, descanso_seg, notas_tecnica, unidad_preferida, superset_group';
+
 function mapExercise(row: any): UiExercise {
   const unit = (row.unidad_preferida ?? 'kg') as LoadUnit;
   return {
@@ -49,6 +52,12 @@ export interface UseWorkoutReturn {
   addWarmupSet: (exId: number) => void;
   /** Removes the most recently added warm-up slot; deletes its set_logs row too if it was completed. */
   removeLastWarmupSet: (exId: number) => Promise<void>;
+  /** Free-text search over the full active catalog (not just today's session), for mid-session add. */
+  searchExercises: (query: string) => Promise<UiExercise[]>;
+  /** Adds an exercise to today's session only — its own `sesion` field in the catalog is untouched. */
+  addExerciseToSession: (exerciseId: number) => Promise<void>;
+  /** Drops an exercise from today's session, deleting any set_logs already written for it today. */
+  removeExerciseFromSession: (exerciseId: number) => Promise<void>;
   finishSession: () => Promise<void>;
   selectSession: (tipo: string) => Promise<void>;
   markRestDay: () => Promise<void>;
@@ -492,6 +501,82 @@ export function useWorkout(): UseWorkoutReturn {
     });
   }, [sessionId, warmups]);
 
+  const searchExercises = useCallback(async (query: string): Promise<UiExercise[]> => {
+    const db = getDB();
+    const trimmed = query.trim();
+    const rows = trimmed
+      ? await db.getAllAsync<any>(
+          `SELECT ${EXERCISE_COLUMNS} FROM exercises WHERE activo = 1 AND nombre LIKE ? ORDER BY nombre ASC LIMIT 40`,
+          [`%${trimmed}%`]
+        )
+      : await db.getAllAsync<any>(
+          `SELECT ${EXERCISE_COLUMNS} FROM exercises WHERE activo = 1 ORDER BY nombre ASC LIMIT 40`
+        );
+    return rows.map(mapExercise);
+  }, []);
+
+  const addExerciseToSession = useCallback(async (exerciseId: number): Promise<void> => {
+    if (exercises.some((e) => e.id === exerciseId)) return; // already in today's list
+    const db = getDB();
+    const row = await db.getFirstAsync<any>(
+      `SELECT ${EXERCISE_COLUMNS} FROM exercises WHERE id = ? AND activo = 1`,
+      [exerciseId]
+    );
+    if (!row) return;
+    const ex = mapExercise(row);
+
+    // Prefill from the most recent completed session for this exercise, same
+    // "last time" convention buildSetsMap uses for the day's own routine.
+    const priorRows = await db.getAllAsync<any>(
+      `SELECT sl.num_serie, sl.peso_kg, sl.carga_valor, sl.carga_unidad, sl.reps, sl.rir_real
+       FROM set_logs sl
+       JOIN workout_sessions ws ON ws.id = sl.session_id
+       WHERE sl.exercise_id = ? AND sl.completada = 1 AND sl.num_serie >= 0
+       ORDER BY ws.fecha DESC, sl.num_serie ASC`,
+      [exerciseId]
+    );
+    const priorBySerie: Record<number, any> = {};
+    for (const r of priorRows) {
+      if (!(r.num_serie in priorBySerie)) priorBySerie[r.num_serie] = r;
+    }
+
+    const newSets: Record<number, SetState> = {};
+    for (let i = 0; i < ex.series; i++) {
+      const prior = priorBySerie[i];
+      newSets[i] = {
+        weight: prior?.carga_valor ?? prior?.peso_kg ?? 0,
+        unit: (prior?.carga_unidad as LoadUnit) ?? ex.unidadPreferida,
+        reps: prior?.reps ?? ex.reps[0],
+        rir: prior?.rir_real ?? ex.rir,
+        done: false,
+        dirty: false,
+      };
+    }
+
+    setExercises((prev) => [...prev, ex]);
+    setSets((prev) => ({ ...prev, [ex.id]: newSets }));
+  }, [exercises]);
+
+  const removeExerciseFromSession = useCallback(async (exerciseId: number): Promise<void> => {
+    if (sessionId !== null) {
+      await getDB().runAsync(
+        'DELETE FROM set_logs WHERE session_id = ? AND exercise_id = ?',
+        [sessionId, exerciseId]
+      );
+    }
+    setExercises((prev) => prev.filter((e) => e.id !== exerciseId));
+    setSets((prev) => {
+      const next = { ...prev };
+      delete next[exerciseId];
+      return next;
+    });
+    setWarmups((prev) => {
+      const next = { ...prev };
+      delete next[exerciseId];
+      return next;
+    });
+  }, [sessionId]);
+
   const sessionComplete =
     !loading &&
     estado !== 'descanso' &&
@@ -590,6 +675,9 @@ export function useWorkout(): UseWorkoutReturn {
     updateSet,
     addWarmupSet,
     removeLastWarmupSet,
+    searchExercises,
+    addExerciseToSession,
+    removeExerciseFromSession,
     finishSession,
     selectSession,
     markRestDay,
