@@ -31,17 +31,36 @@ import { useGoalWeight } from '../../src/hooks/useGoalWeight';
 import LogMetricScreen from '../../src/screens/LogMetricScreen';
 import { useActivityCalendar } from '../../src/hooks/useActivityCalendar';
 import ActivityCalendar from '../../src/components/ActivityCalendar';
+import { useMuscleLoad } from '../../src/hooks/useMuscleLoad';
+import BodyMap from '../../src/components/BodyMap';
+import { missedMuscles, workedMuscles, type MuscleWindow } from '../../src/utils/muscleLoad';
 
 // Away-from-goal red — same color already used for this exact meaning on the Hoy dashboard.
 const AWAY_FROM_GOAL = '#D95240';
 
-type TabKey = 'peso' | 'fuerza' | 'cintura' | 'fotos';
+const LEVEL_ALPHA = ['', '33', '66', '99', ''] as const; // index = level 0-4, matches ActivityCalendar's scale
+
+function muscleColorsByLevel(
+  levels: Partial<Record<string, 0 | 1 | 2 | 3 | 4>>,
+  accent: string,
+  emptyColor: string
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [muscle, level] of Object.entries(levels)) {
+    if (level === undefined) continue;
+    out[muscle] = level === 0 ? emptyColor : level === 4 ? accent : `${accent}${LEVEL_ALPHA[level]}`;
+  }
+  return out;
+}
+
+type TabKey = 'peso' | 'fuerza' | 'cintura' | 'fotos' | 'musculos';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'peso', label: 'Peso' },
   { key: 'fuerza', label: 'Fuerza' },
   { key: 'cintura', label: 'Cintura' },
   { key: 'fotos', label: 'Fotos' },
+  { key: 'musculos', label: 'Musculos' },
 ];
 
 export default function ProgressScreen() {
@@ -70,6 +89,8 @@ export default function ProgressScreen() {
 
   const { days: activityDays } = useActivityCalendar();
   const { goalWeight } = useGoalWeight();
+  const [muscleWindow, setMuscleWindow] = useState<MuscleWindow>(7);
+  const { load: muscleLoad, levels: muscleLevels } = useMuscleLoad(muscleWindow);
 
   const [selectedExerciseId, setSelectedExerciseId] = useState<number | null>(
     defaultExerciseId
@@ -709,6 +730,100 @@ export default function ProgressScreen() {
           </>
         )}
 
+        {/* ===== MUSCULOS TAB ===== */}
+        {tab === 'musculos' && (
+          <>
+            <View style={styles.muscleWindowRow}>
+              {([7, 30, 0] as MuscleWindow[]).map((w) => {
+                const active = muscleWindow === w;
+                const label = w === 0 ? 'Todo' : `${w}d`;
+                return (
+                  <TouchableOpacity
+                    key={w}
+                    onPress={() => setMuscleWindow(w)}
+                    style={[
+                      styles.muscleWindowBtn,
+                      { backgroundColor: active ? theme.accentA : theme.bg3, borderColor: active ? theme.accent : theme.border },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text style={[styles.muscleWindowBtnText, { color: active ? theme.accent : theme.text2 }]}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.bodyMapRow}>
+              <View style={styles.bodyMapCol}>
+                <BodyMap
+                  view="front"
+                  width={140}
+                  height={308}
+                  inertColor={theme.bg4}
+                  colors={muscleColorsByLevel(muscleLevels, theme.accent, theme.bg3)}
+                />
+                <Text style={[styles.bodyMapLabel, { color: theme.text3 }]}>Frente</Text>
+              </View>
+              <View style={styles.bodyMapCol}>
+                <BodyMap
+                  view="back"
+                  width={140}
+                  height={308}
+                  inertColor={theme.bg4}
+                  colors={muscleColorsByLevel(muscleLevels, theme.accent, theme.bg3)}
+                />
+                <Text style={[styles.bodyMapLabel, { color: theme.text3 }]}>Espalda</Text>
+              </View>
+            </View>
+
+            <View style={styles.muscleLegendRow}>
+              <Text style={[styles.legendText, { color: theme.text3 }]}>Menos</Text>
+              {([0, 1, 2, 3, 4] as const).map((lvl) => (
+                <View
+                  key={lvl}
+                  style={[
+                    styles.legendCell,
+                    { backgroundColor: lvl === 0 ? theme.bg3 : `${theme.accent}${['', '33', '66', '99', ''][lvl]}` },
+                  ]}
+                />
+              ))}
+              <Text style={[styles.legendText, { color: theme.text3 }]}>Mas</Text>
+            </View>
+
+            <SectionLabel>Mas trabajado</SectionLabel>
+            <View style={[styles.listCard, { backgroundColor: theme.bg2, borderColor: theme.border, borderRadius: RADII.r2, marginHorizontal: 20, marginBottom: 14, overflow: 'hidden' }]}>
+              {workedMuscles(muscleLoad).length === 0 ? (
+                <Text style={[styles.emptyText, { color: theme.text3, padding: 20 }]}>
+                  Sin series registradas en este periodo
+                </Text>
+              ) : (
+                workedMuscles(muscleLoad).slice(0, 6).map((entry, i, arr) => (
+                  <View
+                    key={entry.muscle}
+                    style={[styles.listRow, { borderBottomColor: theme.border, borderBottomWidth: i < arr.length - 1 ? 1 : 0 }]}
+                  >
+                    <Text style={[styles.listDate, { color: theme.text1 }]}>{entry.muscle}</Text>
+                    <Text style={[styles.listValue, { color: theme.text2 }]}>{entry.sets} series</Text>
+                  </View>
+                ))
+              )}
+            </View>
+
+            {missedMuscles(muscleLoad).length > 0 && missedMuscles(muscleLoad).length < 12 ? (
+              <>
+                <SectionLabel>Sin trabajar en este periodo</SectionLabel>
+                <View style={styles.missedChips}>
+                  {missedMuscles(muscleLoad).map((m) => (
+                    <View key={m} style={[styles.missedChip, { backgroundColor: theme.bg3 }]}>
+                      <Text style={[styles.missedChipText, { color: theme.text3 }]}>{m}</Text>
+                    </View>
+                  ))}
+                </View>
+              </>
+            ) : null}
+          </>
+        )}
 
       </ScrollView>
 
@@ -832,4 +947,16 @@ const styles = StyleSheet.create({
   selectorTrigger: {
     borderWidth: 1,
   },
+  muscleWindowRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, marginBottom: 14 },
+  muscleWindowBtn: { flex: 1, paddingVertical: 8, borderRadius: RADII.r1, borderWidth: 1, alignItems: 'center' },
+  muscleWindowBtnText: { fontSize: 13, fontWeight: '700' },
+  bodyMapRow: { flexDirection: 'row', justifyContent: 'center', gap: 24, marginBottom: 10 },
+  bodyMapCol: { alignItems: 'center' },
+  bodyMapLabel: { fontSize: 11, fontWeight: '600', marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
+  muscleLegendRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, marginBottom: 20 },
+  legendText: { fontSize: 11, marginHorizontal: 4 },
+  legendCell: { width: 12, height: 12, borderRadius: 3 },
+  missedChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 20, marginBottom: 14 },
+  missedChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADII.r1 },
+  missedChipText: { fontSize: 12, fontWeight: '600' },
 });
