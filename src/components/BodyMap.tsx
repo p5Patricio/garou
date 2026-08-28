@@ -1,6 +1,6 @@
 import React from 'react';
-import Svg, { Circle, Path, Rect } from 'react-native-svg';
-import { BODY_VIEWBOX, BACK_REGIONS, FRONT_REGIONS, type BodyView, type MuscleGroup } from '../constants/muscleRegions';
+import Svg, { Path } from 'react-native-svg';
+import { loadBodyMap, type BodyView, type MuscleGroup } from '../constants/muscleRegions';
 
 interface BodyMapProps {
   view: BodyView;
@@ -12,42 +12,15 @@ interface BodyMapProps {
   onPressMuscle?: (muscle: MuscleGroup) => void;
 }
 
-export default function BodyMap({ view, colors, inertColor, width = 160, height = 352, onPressMuscle }: BodyMapProps) {
-  const regions = view === 'front' ? FRONT_REGIONS : BACK_REGIONS;
+export default function BodyMap({ view, colors, inertColor, width = 160, height = 280, onPressMuscle }: BodyMapProps) {
+  const data = loadBodyMap()[view];
 
   return (
-    <Svg width={width} height={height} viewBox={BODY_VIEWBOX}>
-      {regions.map((region, i) => {
+    <Svg width={width} height={height} viewBox={data.vb}>
+      {data.regions.map((region, i) => {
         const fill = region.muscle ? colors[region.muscle] ?? inertColor : inertColor;
         const onPress = region.muscle && onPressMuscle ? () => onPressMuscle(region.muscle as MuscleGroup) : undefined;
-
-        if (region.shape.kind === 'circle') {
-          return (
-            <Circle
-              key={i}
-              cx={region.shape.cx}
-              cy={region.shape.cy}
-              r={region.shape.r}
-              fill={fill}
-              onPress={onPress}
-            />
-          );
-        }
-        if (region.shape.kind === 'rect') {
-          return (
-            <Rect
-              key={i}
-              x={region.shape.x}
-              y={region.shape.y}
-              width={region.shape.width}
-              height={region.shape.height}
-              rx={region.shape.rx}
-              fill={fill}
-              onPress={onPress}
-            />
-          );
-        }
-        return <Path key={i} d={region.shape.d} fill={fill} onPress={onPress} />;
+        return <Path key={i} d={region.d} fill={fill} onPress={onPress} />;
       })}
     </Svg>
   );

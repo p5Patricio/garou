@@ -759,7 +759,7 @@ export default function ProgressScreen() {
                 <BodyMap
                   view="front"
                   width={140}
-                  height={308}
+                  height={246}
                   inertColor={theme.bg4}
                   colors={muscleColorsByLevel(muscleLevels, theme.accent, theme.bg3)}
                 />
@@ -769,7 +769,7 @@ export default function ProgressScreen() {
                 <BodyMap
                   view="back"
                   width={140}
-                  height={308}
+                  height={246}
                   inertColor={theme.bg4}
                   colors={muscleColorsByLevel(muscleLevels, theme.accent, theme.bg3)}
                 />
