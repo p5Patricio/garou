@@ -51,12 +51,15 @@ export default function TrainScreen() {
     loading,
     exercises,
     sets,
+    warmups,
     progressionByExercise,
     lastLoadByExercise,
     sessionComplete,
     completeSet,
     undoSet,
     updateSet,
+    addWarmupSet,
+    removeLastWarmupSet,
     finishSession,
     selectSession,
     markRestDay,
@@ -175,6 +178,34 @@ export default function TrainScreen() {
   const handleUndoSet = async (exId: number, setIdx: number) => {
     await undoSet(exId, setIdx);
     setExpanded({ exId, setIdx });
+  };
+
+  // Warm-up sets (negative numSerie) — no auto-advance to "the next set": with
+  // work sets that's predictable (setIdx + 1), but after a warm-up there's no
+  // single obvious next slot (another warm-up? the first work set?), so this
+  // always just collapses the editor rather than guessing.
+  const handleCompleteWarmup = async (exId: number, numSerie: number) => {
+    const currentSet = warmups[exId]?.[numSerie];
+    if (!currentSet) return;
+    await completeSet(exId, numSerie, { ...currentSet, done: true });
+    if (!sessionStarted) setSessionStarted(true);
+    setExpanded(null);
+  };
+
+  const handleToggleWarmupCircle = async (exId: number, numSerie: number) => {
+    const currentSet = warmups[exId]?.[numSerie];
+    if (!currentSet) return;
+    if (currentSet.done) {
+      await undoSet(exId, numSerie);
+      setExpanded({ exId, setIdx: numSerie });
+      return;
+    }
+    await handleCompleteWarmup(exId, numSerie);
+  };
+
+  const handleUndoWarmup = async (exId: number, numSerie: number) => {
+    await undoSet(exId, numSerie);
+    setExpanded({ exId, setIdx: numSerie });
   };
 
   const handleFinishSession = () => {
@@ -311,6 +342,8 @@ export default function TrainScreen() {
 
           {estado !== 'descanso' && exercises.map((ex) => {
             const exSets = sets[ex.id] ?? {};
+            const exWarmups = warmups[ex.id] ?? {};
+            const warmupKeys = Object.keys(exWarmups).map(Number).sort((a, b) => b - a);
             const isActive = expanded?.exId === ex.id;
             const progression = progressionByExercise[ex.id];
             const firstSet = exSets[0];
@@ -403,6 +436,122 @@ export default function TrainScreen() {
                     })}
                   </View>
                 ) : null}
+
+                <View style={[styles.warmupHeader, { borderBottomColor: theme.border }]}>
+                  <Text style={[styles.warmupHeaderText, { color: theme.text3 }]}>Calentamiento</Text>
+                  <View style={{ flexDirection: 'row', gap: 14 }}>
+                    {warmupKeys.length > 0 ? (
+                      <TouchableOpacity
+                        onPress={() => removeLastWarmupSet(ex.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Quitar el ultimo calentamiento"
+                      >
+                        <Text style={[styles.warmupAction, { color: theme.text3 }]}>Quitar</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    <TouchableOpacity
+                      onPress={() => addWarmupSet(ex.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Agregar serie de calentamiento"
+                    >
+                      <Text style={[styles.warmupAction, { color: theme.accent }]}>+ Agregar</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {warmupKeys.map((numSerie) => {
+                  const s = exWarmups[numSerie];
+                  const isExp = expanded?.exId === ex.id && expanded?.setIdx === numSerie;
+
+                  return (
+                    <View key={numSerie}>
+                      <TouchableOpacity
+                        onPress={() => handleToggle(ex.id, numSerie)}
+                        style={[
+                          styles.setRow,
+                          {
+                            borderBottomColor: theme.border,
+                            borderBottomWidth: 1,
+                            backgroundColor: isExp ? theme.bg3 : 'transparent',
+                          },
+                        ]}
+                        activeOpacity={0.72}
+                        accessibilityRole="button"
+                      >
+                        <TouchableOpacity
+                          onPress={() => handleToggleWarmupCircle(ex.id, numSerie)}
+                          style={[
+                            styles.setCircle,
+                            {
+                              backgroundColor: s.done ? SEMANTIC.greenA : isExp ? theme.accentA : theme.bg4,
+                              borderColor: isExp ? theme.accent : 'transparent',
+                            },
+                          ]}
+                          activeOpacity={0.7}
+                          accessibilityRole="button"
+                          accessibilityLabel="Marcar calentamiento como completado"
+                        >
+                          {s.done ? (
+                            <Icon name="check" size={13} color={SEMANTIC.green} strokeW={2.5} />
+                          ) : (
+                            <Icon name="fire" size={13} color={isExp ? theme.accent : theme.text3} strokeW={2} />
+                          )}
+                        </TouchableOpacity>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.setWeightReps, { color: s.done ? theme.text3 : theme.text1, opacity: 0.85 }]}>
+                            {formatSet(s.weight, s.unit, s.reps)}
+                          </Text>
+                        </View>
+                        <View style={[styles.rirBadge, { backgroundColor: theme.bg4 }]}>
+                          <Text style={[styles.rirBadgeText, { color: theme.text4 }]}>
+                            {s.done ? 'OK' : 'Warm-up'}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+
+                      {isExp ? (
+                        <View
+                          style={[
+                            styles.loggerExpanded,
+                            { backgroundColor: theme.bg3, borderBottomColor: theme.border, borderBottomWidth: 1 },
+                          ]}
+                        >
+                          {s.done ? (
+                            <View style={styles.quickActions}>
+                              <TouchableOpacity
+                                onPress={() => handleUndoWarmup(ex.id, numSerie)}
+                                style={[styles.quickBtn, { backgroundColor: theme.bg4, borderColor: theme.border2 }]}
+                              >
+                                <Text style={[styles.quickBtnText, { color: SEMANTIC.green }]}>Deshacer</Text>
+                              </TouchableOpacity>
+                            </View>
+                          ) : null}
+                          <View style={styles.steppers}>
+                            <Stepper
+                              value={s.weight}
+                              onChange={(v) => handleUpdateSet(ex.id, numSerie, 'weight', v)}
+                              step={s.unit === 'bw' ? 0 : s.unit === 'placas' ? 1 : s.unit === 'lb' ? 5 : 2.5}
+                              min={0}
+                              label="Peso"
+                              unit={s.unit}
+                            />
+                            <Stepper
+                              value={s.reps}
+                              onChange={(v) => handleUpdateSet(ex.id, numSerie, 'reps', v)}
+                              step={1}
+                              min={1}
+                              label="Reps"
+                              unit="reps"
+                            />
+                          </View>
+                          <BtnPrimary onPress={() => handleCompleteWarmup(ex.id, numSerie)} icon="check">
+                            {s.done ? 'Guardar cambios' : 'Completar calentamiento'}
+                          </BtnPrimary>
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })}
 
                 {Array.from({ length: ex.series }).map((_, si) => {
                   const s = exSets[si] ?? {
@@ -618,6 +767,16 @@ const styles = StyleSheet.create({
   progressionBadgeText: { fontSize: 11, fontWeight: '800' },
   exChips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   progressionReason: { fontSize: 11, marginTop: 6, lineHeight: 15 },
+  warmupHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  warmupHeaderText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  warmupAction: { fontSize: 13, fontWeight: '700' },
   exChip: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5 },
   exChipAccent: { fontSize: 11, fontWeight: '700' },
   exChipNeutral: { fontSize: 11, fontWeight: '700' },

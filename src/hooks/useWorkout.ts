@@ -32,12 +32,23 @@ export interface UseWorkoutReturn {
   estado: SessionEstado;
   exercises: UiExercise[];
   sets: SetsMap;
+  /**
+   * Warm-up sets, keyed like `sets` but by NEGATIVE num_serie (-1 = first added,
+   * -2 = second, ...) — that sign is the only thing that marks a set_logs row as
+   * a warm-up. Never counted toward sessionComplete or fed into progression/1RM,
+   * same as the last-time prefill (see buildSetsMap and computeProgression).
+   */
+  warmups: SetsMap;
   progressionByExercise: Record<number, ProgressionResult>;
   lastLoadByExercise: Record<number, { weight: number; unit: LoadUnit; reps: number }>;
   sessionComplete: boolean;
   completeSet: (exId: number, numSerie: number, state: SetState) => Promise<void>;
   undoSet: (exId: number, numSerie: number) => Promise<void>;
   updateSet: (exId: number, numSerie: number, field: keyof SetState, value: number | boolean | LoadUnit) => void;
+  /** Appends one warm-up slot (client-side only until completed) — always after the last one added. */
+  addWarmupSet: (exId: number) => void;
+  /** Removes the most recently added warm-up slot; deletes its set_logs row too if it was completed. */
+  removeLastWarmupSet: (exId: number) => Promise<void>;
   finishSession: () => Promise<void>;
   selectSession: (tipo: string) => Promise<void>;
   markRestDay: () => Promise<void>;
@@ -54,6 +65,7 @@ export function useWorkout(): UseWorkoutReturn {
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [exercises, setExercises] = useState<UiExercise[]>([]);
   const [sets, setSets] = useState<SetsMap>({});
+  const [warmups, setWarmups] = useState<SetsMap>({});
   const [progressionByExercise, setProgressionByExercise] = useState<Record<number, ProgressionResult>>({});
   const [lastLoadByExercise, setLastLoadByExercise] = useState<Record<number, { weight: number; unit: LoadUnit; reps: number }>>({});
   const startTimeRef = useRef(Date.now());
@@ -72,16 +84,19 @@ export function useWorkout(): UseWorkoutReturn {
     return rows.map(mapExercise);
   }, []);
 
-  const buildSetsMap = useCallback(async (exs: UiExercise[], sessId: number | null): Promise<{ sets: SetsMap; lastLoad: Record<number, { weight: number; unit: LoadUnit; reps: number }> }> => {
+  const buildSetsMap = useCallback(async (exs: UiExercise[], sessId: number | null): Promise<{ sets: SetsMap; warmups: SetsMap; lastLoad: Record<number, { weight: number; unit: LoadUnit; reps: number }> }> => {
     const db = getDB();
     const setsMap: SetsMap = {};
+    const warmupsMap: SetsMap = {};
     const lastLoad: Record<number, { weight: number; unit: LoadUnit; reps: number }> = {};
     const exIds = exs.map((e) => e.id);
-    if (exIds.length === 0) return { sets: setsMap, lastLoad };
+    if (exIds.length === 0) return { sets: setsMap, warmups: warmupsMap, lastLoad };
 
     const placeholders = exIds.map(() => '?').join(',');
 
-    // Prior sets for each exercise (from completed sessions, excluding the current session).
+    // Prior sets for each exercise (from completed sessions, excluding the current
+    // session). num_serie >= 0 only — a prior warm-up is never a sensible "last
+    // time" prefill for a work set.
     const priorRows = await db.getAllAsync<any>(
       `SELECT sl.exercise_id, sl.num_serie, sl.peso_kg, sl.carga_valor, sl.carga_unidad, sl.reps, sl.rir_real
        FROM set_logs sl
@@ -89,6 +104,7 @@ export function useWorkout(): UseWorkoutReturn {
        WHERE sl.exercise_id IN (${placeholders})
          AND ws.id <> ?
          AND sl.completada = 1
+         AND sl.num_serie >= 0
        ORDER BY ws.fecha DESC, sl.num_serie ASC`,
       [...exIds, sessId ?? -1]
     );
@@ -157,9 +173,26 @@ export function useWorkout(): UseWorkoutReturn {
               dirty: false,
             };
       }
+
+      // Warm-up sets already logged this session (negative num_serie) — reconstruct
+      // them so a re-hydrate (app restart mid-session, tab refocus) doesn't drop
+      // in-progress warm-ups. -1 = first added, -2 = second, ... (see UseWorkoutReturn).
+      warmupsMap[ex.id] = {};
+      for (const [key, row] of Object.entries(currentBySerie)) {
+        const numSerie = Number(key);
+        if (numSerie >= 0) continue;
+        warmupsMap[ex.id][numSerie] = {
+          weight: row.carga_valor ?? row.peso_kg ?? 0,
+          unit: (row.carga_unidad ?? ex.unidadPreferida) as LoadUnit,
+          reps: row.reps,
+          rir: row.rir_real ?? ex.rir,
+          done: row.completada === 1,
+          dirty: true,
+        };
+      }
     }
 
-    return { sets: setsMap, lastLoad };
+    return { sets: setsMap, warmups: warmupsMap, lastLoad };
   }, []);
 
   const computeProgression = useCallback(async (exs: UiExercise[], currentSessionId: number | null, sessionType: string) => {
@@ -193,10 +226,12 @@ export function useWorkout(): UseWorkoutReturn {
     const sessionPlaceholders = sessionIds.map(() => '?').join(',');
 
     // 2. Fetch all set logs for these exercises in the last 2 sessions in one query.
+    //    num_serie >= 0 only — warm-ups (negative num_serie) never count toward
+    //    "did every set hit the rep/RIR target", same as openGym excludes them.
     const rows = await db.getAllAsync<SetRow>(
       `SELECT id, session_id, exercise_id, num_serie, peso_kg, carga_valor, carga_unidad, reps, rir_real, completada
        FROM set_logs
-       WHERE session_id IN (${sessionPlaceholders}) AND exercise_id IN (${placeholders})
+       WHERE session_id IN (${sessionPlaceholders}) AND exercise_id IN (${placeholders}) AND num_serie >= 0
        ORDER BY session_id, exercise_id, num_serie ASC`,
       [...sessionIds, ...exIds]
     );
@@ -224,13 +259,14 @@ export function useWorkout(): UseWorkoutReturn {
 
   const hydrate = useCallback(async (t: TodaySession): Promise<void> => {
     const exs = await loadExercises(t.tipo);
-    const { sets: setsMap, lastLoad } = await buildSetsMap(exs, t.sessionId);
+    const { sets: setsMap, warmups: warmupsMap, lastLoad } = await buildSetsMap(exs, t.sessionId);
     const progression = await computeProgression(exs, t.sessionId, t.tipo);
     setTipoSesion(t.tipo);
     setEstado(t.estado);
     setSessionId(t.sessionId);
     setExercises(exs);
     setSets(setsMap);
+    setWarmups(warmupsMap);
     setProgressionByExercise(progression);
     setLastLoadByExercise(lastLoad);
 
@@ -332,32 +368,43 @@ export function useWorkout(): UseWorkoutReturn {
         [sessId, exId, numSerie, state.unit === 'kg' ? state.weight : 0, state.weight, state.unit, state.reps, state.rir]
       );
 
-      setSets((prev) => {
-        const ex = exercises.find((item) => item.id === exId);
-        const currentExerciseSets = prev[exId] ?? {};
-        const completed = { ...state, done: true, dirty: true, completedAt: Date.now() };
-        const nextExerciseSets = { ...currentExerciseSets, [numSerie]: completed };
-        const nextIdx = numSerie + 1;
+      const completed = { ...state, done: true, dirty: true, completedAt: Date.now() };
 
-        if (ex && nextIdx < ex.series) {
-          const nextSet = currentExerciseSets[nextIdx];
-          if (nextSet && !nextSet.done && !nextSet.dirty) {
-            nextExerciseSets[nextIdx] = {
-              ...nextSet,
-              weight: completed.weight,
-              unit: completed.unit,
-              reps: completed.reps,
-              rir: completed.rir,
-              dirty: false,
-            };
-          }
-        }
-
-        return {
+      if (numSerie < 0) {
+        // Warm-up set — no auto-prefill cascade into the next slot (that logic
+        // is a "next real work set gets this weight/reps" convenience and would
+        // be wrong here: a warm-up is deliberately lighter than the work sets).
+        setWarmups((prev) => ({
           ...prev,
-          [exId]: nextExerciseSets,
-        };
-      });
+          [exId]: { ...(prev[exId] ?? {}), [numSerie]: completed },
+        }));
+      } else {
+        setSets((prev) => {
+          const ex = exercises.find((item) => item.id === exId);
+          const currentExerciseSets = prev[exId] ?? {};
+          const nextExerciseSets = { ...currentExerciseSets, [numSerie]: completed };
+          const nextIdx = numSerie + 1;
+
+          if (ex && nextIdx < ex.series) {
+            const nextSet = currentExerciseSets[nextIdx];
+            if (nextSet && !nextSet.done && !nextSet.dirty) {
+              nextExerciseSets[nextIdx] = {
+                ...nextSet,
+                weight: completed.weight,
+                unit: completed.unit,
+                reps: completed.reps,
+                rir: completed.rir,
+                dirty: false,
+              };
+            }
+          }
+
+          return {
+            ...prev,
+            [exId]: nextExerciseSets,
+          };
+        });
+      }
     })();
     pendingCompleteSet.current = promise;
     try {
@@ -375,7 +422,8 @@ export function useWorkout(): UseWorkoutReturn {
       );
     }
 
-    setSets((prev) => {
+    const setState = numSerie < 0 ? setWarmups : setSets;
+    setState((prev) => {
       const current = prev[exId]?.[numSerie];
       if (!current) return prev;
       return {
@@ -389,7 +437,8 @@ export function useWorkout(): UseWorkoutReturn {
   }, [sessionId]);
 
   const updateSet = useCallback((exId: number, numSerie: number, field: keyof SetState, value: number | boolean | LoadUnit): void => {
-    setSets((prev) => ({
+    const setState = numSerie < 0 ? setWarmups : setSets;
+    setState((prev) => ({
       ...prev,
       [exId]: {
         ...prev[exId],
@@ -397,6 +446,51 @@ export function useWorkout(): UseWorkoutReturn {
       },
     }));
   }, []);
+
+  const addWarmupSet = useCallback((exId: number): void => {
+    setWarmups((prev) => {
+      const existing = prev[exId] ?? {};
+      const existingKeys = Object.keys(existing).map(Number);
+      const nextNumSerie = (existingKeys.length ? Math.min(...existingKeys) : 0) - 1;
+      const ex = exercises.find((item) => item.id === exId);
+      const lastWorkSet = sets[exId]?.[0];
+      const suggestedWeight = lastWorkSet?.weight ? Math.round((lastWorkSet.weight * 0.5) * 2) / 2 : 0;
+      return {
+        ...prev,
+        [exId]: {
+          ...existing,
+          [nextNumSerie]: {
+            weight: suggestedWeight,
+            unit: lastWorkSet?.unit ?? ex?.unidadPreferida ?? 'kg',
+            reps: ex?.reps[0] ?? 8,
+            rir: ex?.rir ?? 3,
+            done: false,
+            dirty: false,
+          },
+        },
+      };
+    });
+  }, [exercises, sets]);
+
+  const removeLastWarmupSet = useCallback(async (exId: number): Promise<void> => {
+    const existing = warmups[exId] ?? {};
+    const existingKeys = Object.keys(existing).map(Number);
+    if (existingKeys.length === 0) return;
+    const lastNumSerie = Math.min(...existingKeys); // most recently added (see UseWorkoutReturn)
+
+    if (sessionId !== null && existing[lastNumSerie]?.dirty) {
+      await getDB().runAsync(
+        'DELETE FROM set_logs WHERE session_id = ? AND exercise_id = ? AND num_serie = ?',
+        [sessionId, exId, lastNumSerie]
+      );
+    }
+
+    setWarmups((prev) => {
+      const next = { ...(prev[exId] ?? {}) };
+      delete next[lastNumSerie];
+      return { ...prev, [exId]: next };
+    });
+  }, [sessionId, warmups]);
 
   const sessionComplete =
     !loading &&
@@ -452,16 +546,18 @@ export function useWorkout(): UseWorkoutReturn {
     await getDB().runAsync('UPDATE exercises SET unidad_preferida = ? WHERE id = ?', [unit, exId]);
     const exs = await loadExercises(tipoSesion);
     setExercises(exs);
-    setSets((prev) => {
-      const existing = prev[exId];
-      if (!existing) return prev;
-      const nextSets = { ...existing };
-      Object.keys(nextSets).forEach((idx) => {
+    const applyUnit = (map: SetsMap): SetsMap => {
+      const existing = map[exId];
+      if (!existing) return map;
+      const next = { ...existing };
+      Object.keys(next).forEach((idx) => {
         const key = Number(idx);
-        if (!nextSets[key].done) nextSets[key] = { ...nextSets[key], unit };
+        if (!next[key].done) next[key] = { ...next[key], unit };
       });
-      return { ...prev, [exId]: nextSets };
-    });
+      return { ...map, [exId]: next };
+    };
+    setSets(applyUnit);
+    setWarmups(applyUnit);
   }, [loadExercises, tipoSesion]);
 
   const togglePlacas = useCallback(async (exId: number): Promise<void> => {
@@ -485,12 +581,15 @@ export function useWorkout(): UseWorkoutReturn {
     estado,
     exercises,
     sets,
+    warmups,
     progressionByExercise,
     lastLoadByExercise,
     sessionComplete,
     completeSet,
     undoSet,
     updateSet,
+    addWarmupSet,
+    removeLastWarmupSet,
     finishSession,
     selectSession,
     markRestDay,
