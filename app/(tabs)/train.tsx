@@ -36,7 +36,7 @@ interface HistoryModal {
   exerciseName: string;
 }
 
-const UNITS: LoadUnit[] = ['kg', 'placas', 'lb'];
+const UNITS: LoadUnit[] = ['kg', 'placas', 'lb', 'bw'];
 
 function formatSet(weight: number, unit: LoadUnit, reps: number): string {
   if (unit === 'bw') {
@@ -481,24 +481,25 @@ export default function TrainScreen() {
                   </View>
                 </TouchableOpacity>
 
-                {!ex.esBodyweight ? (
-                  <View style={[styles.unitToggle, { backgroundColor: theme.bg3, borderColor: theme.border }]}>
-                    {UNITS.map((unit) => {
-                      const active = ex.unidadPreferida === unit;
-                      return (
-                        <TouchableOpacity
-                          key={unit}
-                          onPress={() => setExerciseUnit(ex.id, unit)}
-                          style={[styles.unitSeg, active && { backgroundColor: theme.accent }]}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: active }}
-                        >
-                          <Text style={[styles.unitSegText, { color: active ? '#fff' : theme.text3 }]}>{unit}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                ) : null}
+                {/* Always shown — an exercise seeded as 'bw' used to lock this out
+                    permanently (esBodyweight only ever reads the current unit), so
+                    a weighted-dip/pull-up type exercise had no way back to kg/placas/lb. */}
+                <View style={[styles.unitToggle, { backgroundColor: theme.bg3, borderColor: theme.border }]}>
+                  {UNITS.map((unit) => {
+                    const active = ex.unidadPreferida === unit;
+                    return (
+                      <TouchableOpacity
+                        key={unit}
+                        onPress={() => setExerciseUnit(ex.id, unit)}
+                        style={[styles.unitSeg, active && { backgroundColor: theme.accent }]}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                      >
+                        <Text style={[styles.unitSegText, { color: active ? '#fff' : theme.text3 }]}>{unit}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
 
                 <View style={[styles.warmupHeader, { borderBottomColor: theme.border }]}>
                   <Text style={[styles.warmupHeaderText, { color: theme.text3 }]}>Calentamiento</Text>
@@ -973,7 +974,7 @@ const styles = StyleSheet.create({
   exLastValue: { fontSize: 13, fontWeight: '800' },
   historialLink: { fontSize: 11, fontWeight: '700', marginTop: 2 },
   unitToggle: { flexDirection: 'row', borderWidth: 1, borderRadius: RADII.r1, marginHorizontal: 14, marginTop: 10, overflow: 'hidden' },
-  unitSeg: { flex: 1, minHeight: 36, alignItems: 'center', justifyContent: 'center' },
+  unitSeg: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   unitSegText: { fontSize: 12, fontWeight: '800' },
   setRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
   setCircle: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },

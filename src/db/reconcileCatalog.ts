@@ -48,6 +48,18 @@ const LEGACY_CONTINUITY: { fromNombre: string; fromSesion: string; toNombre: str
   { fromNombre: 'Empuje de cadera', fromSesion: 'Pierna B', toNombre: 'Empuje de cadera (Hip Thrust)', toSesion: 'Pierna B' },
   { fromNombre: 'Elevacion de gemelos de pie', fromSesion: 'Pierna B', toNombre: 'Gemelos de pie o en prensa', toSesion: 'Pierna B' },
   { fromNombre: 'Encogimientos de hombros', fromSesion: 'Pierna B', toNombre: 'Encogimientos de hombros', toSesion: 'Pierna B' },
+
+  // v3 -> v4.1 (rutina_gimnasio_v4-1.pdf) renames. Separate block, on purpose:
+  // fromNombre here must match what a real row is named TODAY (the v3 name the
+  // block above already migrated it to), not the original pre-v3 name — a row's
+  // nombre only ever holds its most recent value, so continuity has to chain
+  // from wherever it actually is now, not from every name it has ever had.
+  { fromNombre: 'Gemelos de pie', fromSesion: 'Pierna A', toNombre: 'Gemelos de pie (rodilla recta)', toSesion: 'Pierna A' },
+  { fromNombre: 'Gemelos de pie', fromSesion: 'Ligero', toNombre: 'Gemelos de pie (rodilla recta)', toSesion: 'Ligero' },
+  { fromNombre: 'Encogimientos de hombros', fromSesion: 'Ligero', toNombre: 'Encogimientos en banco inclinado 45 grados', toSesion: 'Ligero' },
+  { fromNombre: 'Curl de muneca con mancuernas', fromSesion: 'Ligero', toNombre: 'Curl de muneca (palmas arriba)', toSesion: 'Ligero' },
+  { fromNombre: 'Remo en polea baja (agarre estrecho)', fromSesion: 'Torso B', toNombre: 'Remo en polea (agarre ancho)', toSesion: 'Torso B' },
+  { fromNombre: 'Gemelos de pie o en prensa', fromSesion: 'Pierna B', toNombre: 'Gemelos de pie o en prensa (pierna recta)', toSesion: 'Pierna B' },
 ];
 
 const key = (nombre: string, sesion: string) => `${nombre}|${sesion}`;

@@ -221,6 +221,86 @@ async function main() {
     check('the row with history (id 2) is the survivor', active[0]?.id === 2, `got id ${active[0]?.id}`);
   }
 
+  console.log('\n=== Scenario 6: v3 -> v4.1 rename continuity (the actual real-device state) ===');
+  {
+    // The 34 v3 exercises, exactly as seed.ts had them before the v4.1 rewrite —
+    // this is what a real device's `exercises` table looks like today.
+    const v3Rows: { nombre: string; sesion: string }[] = [
+      { nombre: 'Press de banca con barra', sesion: 'Torso A' },
+      { nombre: 'Remo con apoyo en pecho', sesion: 'Torso A' },
+      { nombre: 'Jalon al pecho (neutro o supino)', sesion: 'Torso A' },
+      { nombre: 'Apertura en pec deck o cruce en polea', sesion: 'Torso A' },
+      { nombre: 'Elevaciones laterales', sesion: 'Torso A' },
+      { nombre: 'Curl inclinado con mancuernas', sesion: 'Torso A' },
+      { nombre: 'Extension de triceps sobre la cabeza', sesion: 'Torso A' },
+      { nombre: 'Sentadilla con barra alta o hack', sesion: 'Pierna A' },
+      { nombre: 'Prensa de pierna', sesion: 'Pierna A' },
+      { nombre: 'Extension de cuadriceps', sesion: 'Pierna A' },
+      { nombre: 'Curl femoral sentado', sesion: 'Pierna A' },
+      { nombre: 'Gemelos de pie', sesion: 'Pierna A' },
+      { nombre: 'Crunch en polea', sesion: 'Pierna A' },
+      { nombre: 'Elevaciones laterales', sesion: 'Ligero' },
+      { nombre: 'Pec deck invertido', sesion: 'Ligero' },
+      { nombre: 'Pajaros en banco inclinado', sesion: 'Ligero' },
+      { nombre: 'Encogimientos de hombros', sesion: 'Ligero' },
+      { nombre: 'Curl de muneca con mancuernas', sesion: 'Ligero' },
+      { nombre: 'Curl inverso', sesion: 'Ligero' },
+      { nombre: 'Gemelos de pie', sesion: 'Ligero' },
+      { nombre: 'Crunch en polea', sesion: 'Ligero' },
+      { nombre: 'Fondos en paralelas lastrados', sesion: 'Torso B' },
+      { nombre: 'Dominadas o jalon prono', sesion: 'Torso B' },
+      { nombre: 'Press inclinado con mancuernas', sesion: 'Torso B' },
+      { nombre: 'Remo en polea baja (agarre estrecho)', sesion: 'Torso B' },
+      { nombre: 'Press militar sentado', sesion: 'Torso B' },
+      { nombre: 'Curl predicador', sesion: 'Torso B' },
+      { nombre: 'Press frances con barra Z', sesion: 'Torso B' },
+      { nombre: 'Peso muerto rumano', sesion: 'Pierna B' },
+      { nombre: 'Sentadilla hack o prensa', sesion: 'Pierna B' },
+      { nombre: 'Curl femoral sentado', sesion: 'Pierna B' },
+      { nombre: 'Empuje de cadera (Hip Thrust)', sesion: 'Pierna B' },
+      { nombre: 'Gemelos de pie o en prensa', sesion: 'Pierna B' },
+      { nombre: 'Encogimientos de hombros', sesion: 'Pierna B' },
+    ];
+    check('v3 fixture has all 34 exercises', v3Rows.length === 34, `got ${v3Rows.length}`);
+
+    const rows: Row[] = v3Rows.map((e, i) => ({ id: i + 1, nombre: e.nombre, sesion: e.sesion, activo: 1 }));
+    // Real training history on two of the six renamed exercises, keyed by their
+    // v3-era id — this is the actual point of the test: does a rename preserve it.
+    const remoId = rows.find((r) => r.nombre === 'Remo en polea baja (agarre estrecho)')!.id;
+    const gemelosLigeroId = rows.find((r) => r.nombre === 'Gemelos de pie' && r.sesion === 'Ligero')!.id;
+    const setLogs = [
+      ...Array.from({ length: 18 }, () => ({ exercise_id: remoId })),
+      ...Array.from({ length: 12 }, () => ({ exercise_id: gemelosLigeroId })),
+    ];
+    const db = makeDb(rows, setLogs);
+    const report = await reconcileExerciseCatalog(db as any);
+    console.log('  report:', JSON.stringify(report));
+    assertFullCatalog('v3->v4.1', rows);
+
+    const renames: { from: string; fromSesion: string; to: string; toSesion: string }[] = [
+      { from: 'Gemelos de pie', fromSesion: 'Pierna A', to: 'Gemelos de pie (rodilla recta)', toSesion: 'Pierna A' },
+      { from: 'Gemelos de pie', fromSesion: 'Ligero', to: 'Gemelos de pie (rodilla recta)', toSesion: 'Ligero' },
+      { from: 'Encogimientos de hombros', fromSesion: 'Ligero', to: 'Encogimientos en banco inclinado 45 grados', toSesion: 'Ligero' },
+      { from: 'Curl de muneca con mancuernas', fromSesion: 'Ligero', to: 'Curl de muneca (palmas arriba)', toSesion: 'Ligero' },
+      { from: 'Remo en polea baja (agarre estrecho)', fromSesion: 'Torso B', to: 'Remo en polea (agarre ancho)', toSesion: 'Torso B' },
+      { from: 'Gemelos de pie o en prensa', fromSesion: 'Pierna B', to: 'Gemelos de pie o en prensa (pierna recta)', toSesion: 'Pierna B' },
+    ];
+    for (const r of renames) {
+      const oldId = v3Rows.findIndex((e) => e.nombre === r.from && e.sesion === r.fromSesion) + 1;
+      const survivor = rows.find((row) => row.nombre === r.to && row.sesion === r.toSesion);
+      check(
+        `"${r.from}" -> "${r.to}" [${r.toSesion}] keeps id ${oldId}`,
+        survivor?.id === oldId,
+        `got id ${survivor?.id}`
+      );
+    }
+
+    const removed = ['Curl inverso', 'Crunch en polea (Ligero)', 'Pajaros en banco inclinado', 'Encogimientos de hombros (Pierna B)'];
+    check('exactly 4 v3 exercises deactivated (not renamed forward)', report.deactivated === 4, `got ${report.deactivated}, expected ${removed.join(', ')}`);
+    check('exactly 4 new v4.1 exercises inserted', report.inserted === 4);
+    check('exactly 6 renamed exercises adopted (not counted as fresh inserts)', report.adopted === 6 + (34 - 4 - 6), `adopted=${report.adopted}`);
+  }
+
   console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}\n`);
   process.exit(failures === 0 ? 0 : 1);
 }
