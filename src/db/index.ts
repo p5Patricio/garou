@@ -1,7 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import { SCHEMA_SQL } from './schema';
 import { seedDatabase, EXERCISES } from './seed';
-import { reconcileExerciseCatalog } from './reconcileCatalog';
 
 // Continuity map for migration 11 (Rutina de Hipertrofia v3): links each exercise
 // that survives into the new routine back to its previous (nombre, sesion) so the
@@ -435,28 +434,24 @@ export async function initDB(): Promise<SQLite.SQLiteDatabase> {
 
     await seedDatabase(db);
 
-    // Bring the exercises table in line with the catalog on every launch, so a
-    // device left in a bad state by an older migration repairs itself rather than
-    // needing yet another one-shot migration to chase it. No-op once in sync.
+    // reconcileExerciseCatalog is NEVER called automatically here anymore.
     //
-    // Skipped once the user can edit their own routine and has done so — that
-    // feature must set catalog_customized = '1' when it lands, or it will fight
-    // this reconcile.
-    try {
-      const customized = await db.getFirstAsync<{ value: string }>(
-        "SELECT value FROM settings WHERE key = 'catalog_customized'"
-      );
-      if (customized?.value !== '1') {
-        const report = await reconcileExerciseCatalog(db);
-        if (report.inserted > 0 || report.deactivated > 0) {
-          console.log('[initDB] catalog reconciled', report);
-        }
-      }
-    } catch (err) {
-      // A reconcile failure must never block app startup — the catalog simply
-      // stays as it is until the next launch.
-      console.error('[initDB] catalog reconcile error', err);
-    }
+    // It used to run on every launch, silently forcing every device's exercises
+    // table to match this build's hardcoded EXERCISES catalog. That was fine
+    // while Garou had exactly one user (me) whose device was always meant to
+    // mirror the latest seed. It stopped being fine the moment other people
+    // started installing Garou and editing Rutina to fit their own routine:
+    // any exercise they renamed, or added and I never wrote, doesn't match
+    // anything in EXERCISES, so an automatic reconcile would deactivate their
+    // real customization and silently reinsert mine in its place — on every
+    // single relaunch, not just after an update. A `catalog_customized` opt-out
+    // flag was sketched here for this, but nothing ever set it, so the bug was
+    // live from the moment routine editing shipped.
+    //
+    // The fix is to make catalog sync an explicit, user-initiated action
+    // instead of an implicit background one: see syncOfficialCatalog (Rutina's
+    // "Sincronizar con la rutina oficial" button), which calls
+    // reconcileExerciseCatalog directly, once, with the user's confirmation.
 
     _db = db;
     return db;

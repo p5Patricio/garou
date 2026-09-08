@@ -22,6 +22,7 @@ import { getDB, initDB } from '../../src/db';
 import type { LoadUnit } from '../../src/types/workout';
 import ExerciseLibraryScreen from '../../src/screens/ExerciseLibraryScreen';
 import { datasetMediaUrl, type DatasetExercise } from '../../src/data/exerciseDataset';
+import { reconcileExerciseCatalog } from '../../src/db/reconcileCatalog';
 
 interface ExerciseRow {
   id: number;
@@ -55,6 +56,7 @@ export default function RoutineScreen() {
   const [editing, setEditing] = useState<ExerciseRow | null>(null);
   const [libraryBrowseOpen, setLibraryBrowseOpen] = useState(false);
   const [linkingOpen, setLinkingOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const loadExercises = useCallback(async () => {
     try {
@@ -252,6 +254,36 @@ export default function RoutineScreen() {
     setEditing({ ...editing, dataset_id: null, gif_path: null, thumb_path: null });
   };
 
+  const handleSyncOfficial = () => {
+    if (syncing) return;
+    Alert.alert(
+      'Sincronizar con la rutina oficial',
+      'Esto actualiza tus ejercicios para que coincidan con la ultima rutina oficial de Garou: agrega los que sean nuevos, actualiza series/reps/notas de los que ya tenes, y desactiva (sin borrar tu historial) los que ya no esten en la oficial — incluido cualquier ejercicio propio que hayas agregado o renombrado y que no forme parte de ella.\n\nTu historial de series nunca se borra. Continuar?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Sincronizar',
+          onPress: async () => {
+            setSyncing(true);
+            try {
+              const report = await reconcileExerciseCatalog(getDB());
+              await loadExercises();
+              Alert.alert(
+                'Sincronizado',
+                `${report.adopted} actualizados, ${report.inserted} agregados, ${report.deactivated} desactivados.`
+              );
+            } catch (err) {
+              console.error('[RoutineScreen] sync official catalog error', err);
+              Alert.alert('Error', 'No se pudo sincronizar. Intenta de nuevo.');
+            } finally {
+              setSyncing(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={['top']}>
@@ -307,6 +339,19 @@ export default function RoutineScreen() {
             );
           })}
         </ScrollView>
+
+        <TouchableOpacity
+          onPress={handleSyncOfficial}
+          disabled={syncing}
+          style={[styles.syncRow, { borderColor: theme.border2 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Sincronizar con la rutina oficial de Garou"
+        >
+          <Icon name="download" size={14} color={theme.text3} strokeW={2} />
+          <Text style={[styles.syncRowText, { color: theme.text3 }]}>
+            {syncing ? 'Sincronizando...' : 'Sincronizar con la rutina oficial de Garou'}
+          </Text>
+        </TouchableOpacity>
 
         <SectionLabel>{session}</SectionLabel>
         <View style={[styles.listCard, { backgroundColor: theme.bg2, borderColor: theme.border }]}>
@@ -507,6 +552,19 @@ const styles = StyleSheet.create({
   exerciseRow: { minHeight: 72, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   orderBadge: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   rowThumb: { width: 34, height: 34, borderRadius: 11 },
+  syncRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginHorizontal: 20,
+    marginBottom: 14,
+    minHeight: 48,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: RADII.r1,
+  },
+  syncRowText: { fontSize: 12, fontWeight: '600' },
   gifLinkBtn: {
     flexDirection: 'row',
     alignItems: 'center',

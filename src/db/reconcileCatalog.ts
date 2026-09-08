@@ -78,7 +78,8 @@ export interface ReconcileReport {
 }
 
 /**
- * Makes the exercises table match the catalog in seed.ts, from ANY starting state.
+ * Makes the exercises table match the official catalog in seed.ts, from ANY
+ * starting state.
  *
  * Written to be idempotent and self-healing rather than to assume a specific prior
  * schema version: two earlier one-shot migrations (11 and 12) each assumed the table
@@ -93,6 +94,14 @@ export interface ReconcileReport {
  *
  * Nothing is ever deleted — retired exercises are set activo = 0 so their set_logs
  * history stays intact and reversible.
+ *
+ * IMPORTANT — call this ONLY from an explicit, user-initiated action (Rutina's
+ * "Sincronizar con la rutina oficial" button), never automatically on app launch.
+ * It used to run on every initDB() call, which is exactly what made it dangerous
+ * once other people started installing Garou and customizing Rutina to their own
+ * routine: any exercise they renamed or added doesn't match this catalog, so an
+ * automatic run would deactivate their real customization and reinsert the
+ * official one in its place, silently, on every relaunch. See src/db/index.ts.
  */
 export async function reconcileExerciseCatalog(db: SQLiteDatabase): Promise<ReconcileReport> {
   // All reads happen up front, outside any write transaction. Reads interleaved
