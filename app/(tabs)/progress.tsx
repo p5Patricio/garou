@@ -33,25 +33,10 @@ import { useActivityCalendar } from '../../src/hooks/useActivityCalendar';
 import ActivityCalendar from '../../src/components/ActivityCalendar';
 import { useMuscleLoad } from '../../src/hooks/useMuscleLoad';
 import BodyMap from '../../src/components/BodyMap';
-import { missedMuscles, workedMuscles, type MuscleWindow } from '../../src/utils/muscleLoad';
+import { missedMuscles, workedMuscles, muscleColorsByLevel, type MuscleWindow } from '../../src/utils/muscleLoad';
 
 // Away-from-goal red — same color already used for this exact meaning on the Hoy dashboard.
 const AWAY_FROM_GOAL = '#D95240';
-
-const LEVEL_ALPHA = ['', '33', '66', '99', ''] as const; // index = level 0-4, matches ActivityCalendar's scale
-
-function muscleColorsByLevel(
-  levels: Partial<Record<string, 0 | 1 | 2 | 3 | 4>>,
-  accent: string,
-  emptyColor: string
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [muscle, level] of Object.entries(levels)) {
-    if (level === undefined) continue;
-    out[muscle] = level === 0 ? emptyColor : level === 4 ? accent : `${accent}${LEVEL_ALPHA[level]}`;
-  }
-  return out;
-}
 
 type TabKey = 'peso' | 'fuerza' | 'cintura' | 'fotos' | 'musculos';
 

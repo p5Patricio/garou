@@ -355,7 +355,11 @@ export default function RoutineScreen() {
 
         <SectionLabel>{session}</SectionLabel>
         <View style={[styles.listCard, { backgroundColor: theme.bg2, borderColor: theme.border }]}>
-          {exercises.map((ex, index) => (
+          {exercises.map((ex, index) => {
+            const supersetPartner = ex.superset_group
+              ? exercises.find((other) => other.superset_group === ex.superset_group && other.id !== ex.id)
+              : null;
+            return (
             <TouchableOpacity
               key={ex.id}
               onPress={() => setEditing(ex)}
@@ -379,6 +383,11 @@ export default function RoutineScreen() {
                 <Text style={[styles.exerciseMeta, { color: theme.text3 }]}>
                   {ex.series_objetivo}x{ex.reps_min}-{ex.reps_max} - RIR {ex.rir_min}-{ex.rir_max} - {Math.round(ex.descanso_seg / 60)} min - {ex.unidad_preferida}
                 </Text>
+                {supersetPartner ? (
+                  <Text style={[styles.exerciseSuperset, { color: theme.accent }]} numberOfLines={1}>
+                    Superserie con {supersetPartner.nombre}
+                  </Text>
+                ) : null}
               </View>
                 <View style={styles.rowActions}>
                   <TouchableOpacity
@@ -400,7 +409,8 @@ export default function RoutineScreen() {
                 </View>
               <Icon name="chevron" size={16} color={theme.text4} strokeW={2} />
             </TouchableOpacity>
-          ))}
+            );
+          })}
         </View>
       </ScrollView>
 
@@ -585,6 +595,7 @@ const styles = StyleSheet.create({
   exerciseBody: { flex: 1 },
   exerciseName: { fontSize: 15, fontWeight: '800' },
   exerciseMeta: { fontSize: 12, marginTop: 3 },
+  exerciseSuperset: { fontSize: 11, fontWeight: '700', marginTop: 2 },
   rowActions: { gap: 4, alignItems: 'flex-end' },
   rowActionBtn: { minHeight: 24, minWidth: 44, alignItems: 'flex-end', justifyContent: 'center' },
   rowActionText: { fontSize: 11, fontWeight: '800' },

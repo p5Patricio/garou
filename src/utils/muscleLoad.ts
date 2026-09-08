@@ -6,6 +6,28 @@ export type MuscleWindow = 7 | 30 | 0; // 0 = all time
 
 export type MuscleLevel = 0 | 1 | 2 | 3 | 4;
 
+// index = level 0-4, matches ActivityCalendar's own accent+alpha scale.
+const LEVEL_ALPHA = ['', '33', '66', '99', ''] as const;
+
+/**
+ * Maps each muscle's bucketed level to a fill color for BodyMap: accent hex +
+ * alpha suffix for 1-3, solid accent for 4 (hardest-worked), emptyColor for 0
+ * (untrained). Shared between the Hoy dashboard and the Progreso tab so both
+ * read the map the same way.
+ */
+export function muscleColorsByLevel(
+  levels: Partial<Record<string, MuscleLevel>>,
+  accent: string,
+  emptyColor: string
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [muscle, level] of Object.entries(levels)) {
+    if (level === undefined) continue;
+    out[muscle] = level === 0 ? emptyColor : level === 4 ? accent : `${accent}${LEVEL_ALPHA[level]}`;
+  }
+  return out;
+}
+
 /**
  * "Effective sets" per muscle group: a straight count of completed, non-warmup
  * sets (num_serie >= 0) whose exercise's grupo_muscular matches, in the window.

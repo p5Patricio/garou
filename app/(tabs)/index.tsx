@@ -17,6 +17,9 @@ import { useActiveTimer } from '../../src/hooks/useActiveTimer';
 import { useDashboard } from '../../src/hooks/useDashboard';
 import { useActivityCalendar } from '../../src/hooks/useActivityCalendar';
 import ActivityCalendar from '../../src/components/ActivityCalendar';
+import { useMuscleLoad } from '../../src/hooks/useMuscleLoad';
+import BodyMap from '../../src/components/BodyMap';
+import { muscleColorsByLevel } from '../../src/utils/muscleLoad';
 import { getSuggestedRoutine, ROUTINE_SESSIONS } from '../../src/utils/workoutSession';
 
 const WEEK_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
@@ -54,6 +57,7 @@ export default function HoyScreen() {
   const router = useRouter();
   const { data, loading } = useDashboard();
   const { days: activityDays } = useActivityCalendar();
+  const { levels: muscleLevels } = useMuscleLoad(7);
   const restTimer = useActiveTimer('rest');
   const cardioTimer = useActiveTimer('cardio');
 
@@ -154,6 +158,26 @@ export default function HoyScreen() {
                 </View>
               );
             })}
+          </View>
+        </View>
+
+        <View style={[styles.muscleCard, { backgroundColor: theme.bg2, borderColor: theme.border, borderRadius: RADII.r3 }]}>
+          <Text style={[styles.muscleCardLabel, { color: theme.text3 }]}>Musculos - ultimos 7 dias</Text>
+          <View style={styles.muscleCardRow}>
+            <BodyMap
+              view="front"
+              width={110}
+              height={193}
+              inertColor={theme.bg4}
+              colors={muscleColorsByLevel(muscleLevels, theme.accent, theme.bg3)}
+            />
+            <BodyMap
+              view="back"
+              width={110}
+              height={193}
+              inertColor={theme.bg4}
+              colors={muscleColorsByLevel(muscleLevels, theme.accent, theme.bg3)}
+            />
           </View>
         </View>
 
@@ -263,5 +287,8 @@ const styles = StyleSheet.create({
   weightValue: { fontSize: 26, fontWeight: '900', letterSpacing: -0.4 },
   weightSub: { fontSize: 12, marginTop: 2 },
   weightIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  muscleCard: { marginHorizontal: 20, marginBottom: 14, borderWidth: 1, padding: 14, alignItems: 'center' },
+  muscleCardLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10 },
+  muscleCardRow: { flexDirection: 'row', justifyContent: 'center', gap: 20 },
   calendarCard: { marginHorizontal: 20, marginBottom: 14, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 16 },
 });

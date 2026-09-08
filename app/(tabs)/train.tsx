@@ -392,6 +392,9 @@ export default function TrainScreen() {
             const exWarmups = warmups[ex.id] ?? {};
             const warmupKeys = Object.keys(exWarmups).map(Number).sort((a, b) => b - a);
             const isActive = expanded?.exId === ex.id;
+            const supersetPartner = ex.supersetGroup
+              ? exercises.find((other) => other.supersetGroup === ex.supersetGroup && other.id !== ex.id)
+              : null;
             const progression = progressionByExercise[ex.id];
             const firstSet = exSets[0];
             const prefillWeight = firstSet?.weight ?? 0;
@@ -454,11 +457,19 @@ export default function TrainScreen() {
                         <Text style={[styles.exChipNeutral, { color: theme.text3 }]}>{Math.round(ex.descansoSeg / 60)} min</Text>
                       </View>
                       {ex.supersetGroup ? (
-                        <View style={[styles.exChip, { backgroundColor: theme.bg3 }]}>
-                          <Text style={[styles.exChipNeutral, { color: theme.text3 }]}>Superset</Text>
+                        <View style={[styles.exChip, { backgroundColor: theme.accentA }]}>
+                          <Text style={[styles.exChipAccent, { color: theme.accent }]}>Superserie</Text>
                         </View>
                       ) : null}
                     </View>
+                    {supersetPartner ? (
+                      <View style={styles.supersetPartnerRow}>
+                        <Icon name="link" size={11} color={theme.accent} strokeW={2.2} />
+                        <Text style={[styles.supersetPartnerText, { color: theme.accent }]}>
+                          Con {supersetPartner.nombre}
+                        </Text>
+                      </View>
+                    ) : null}
                     {progression?.reason ? (
                       <Text
                         style={[
@@ -925,6 +936,8 @@ const styles = StyleSheet.create({
   progressionBadgeText: { fontSize: 11, fontWeight: '800' },
   exChips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   progressionReason: { fontSize: 11, marginTop: 6, lineHeight: 15 },
+  supersetPartnerRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
+  supersetPartnerText: { fontSize: 11, fontWeight: '700' },
   warmupHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
