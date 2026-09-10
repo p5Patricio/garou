@@ -23,8 +23,9 @@ import { useActiveTimer } from '../../src/hooks/useActiveTimer';
 import { useWorkout } from '../../src/hooks/useWorkout';
 import ExerciseHistoryScreen from '../../src/screens/ExerciseHistoryScreen';
 import { ROUTINE_SESSIONS } from '../../src/utils/workoutSession';
-import type { LoadUnit } from '../../src/types/workout';
+import type { LoadUnit, SetsMap } from '../../src/types/workout';
 import { datasetMediaUrl } from '../../src/data/exerciseDataset';
+import { resolveSetCompletionOutcome } from '../../src/utils/supersetFlow';
 
 interface Expanded {
   exId: number;
@@ -191,18 +192,25 @@ export default function TrainScreen() {
       return;
     }
 
-    if (setIdx + 1 < ex.series) {
-      setExpanded({ exId, setIdx: setIdx + 1 });
-    } else {
-      const exIndex = exercises.findIndex((item) => item.id === exId);
-      const nextEx = exercises[exIndex + 1];
-      setExpanded(nextEx ? { exId: nextEx.id, setIdx: 0 } : null);
-    }
+    // completeSet() persists and updates `sets` asynchronously — this closure's
+    // `sets` can still be the pre-completion snapshot, so patch this one set
+    // locally before deciding what happens next. resolveSetCompletionOutcome
+    // needs to see it as done to correctly tell "opening" from "closing" a
+    // superset round (see src/utils/supersetFlow.ts for why this replaced the
+    // old always-start-a-timer logic: descanso_seg = 0 on a superset's opener
+    // used to fall back to a wrong 90s rest instead of meaning "no rest").
+    const setsAfterThisCompletion: SetsMap = {
+      ...sets,
+      [exId]: { ...sets[exId], [setIdx]: { ...currentSet, done: true } },
+    };
+    const outcome = resolveSetCompletionOutcome(exercises, setsAfterThisCompletion, exId, setIdx);
+    setExpanded(outcome.next);
 
-    const timerLabel = ex.nombre.split(' ').slice(0, 2).join(' ');
-    const duration = ex.descansoSeg && ex.descansoSeg > 0 ? ex.descansoSeg : 90;
-    restTimer.start(timerLabel, duration)
-      .catch((err) => console.error('[TrainScreen] start rest timer error', err));
+    if (outcome.restSeconds > 0) {
+      const timerLabel = ex.nombre.split(' ').slice(0, 2).join(' ');
+      restTimer.start(timerLabel, outcome.restSeconds)
+        .catch((err) => console.error('[TrainScreen] start rest timer error', err));
+    }
   };
 
   const handleConfirm = (exId: number, setIdx: number) => {
