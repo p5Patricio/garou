@@ -1,8 +1,11 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { daysAgoLocal } from './date';
+import { daysAgoLocal, mondayOfWeek, todayLocal } from './date';
 import { MUSCLE_GROUPS, normalizeMuscleGroup, type MuscleGroup } from '../constants/muscleRegions';
 
-export type MuscleWindow = 7 | 30 | 0; // 0 = all time
+// 0 = all time. 'week' = Monday of the current week through today — resets
+// every Monday instead of rolling, matching the routine's own Mon..Sat week
+// (used by the Hoy dashboard; Progreso keeps the rolling 7/30/all toggle).
+export type MuscleWindow = 7 | 30 | 0 | 'week';
 
 export type MuscleLevel = 0 | 1 | 2 | 3 | 4;
 
@@ -45,7 +48,10 @@ export async function getMuscleLoad(
 
   const params: (string | number)[] = [];
   let dateClause = '';
-  if (window > 0) {
+  if (window === 'week') {
+    dateClause = 'AND ws.fecha >= ?';
+    params.push(mondayOfWeek(todayLocal()));
+  } else if (window > 0) {
     dateClause = 'AND ws.fecha >= ?';
     params.push(daysAgoLocal(window - 1));
   }

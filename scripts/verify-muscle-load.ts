@@ -4,6 +4,7 @@
  */
 import { levelsOf, missedMuscles, workedMuscles } from '../src/utils/muscleLoad';
 import { MUSCLE_GROUPS, normalizeMuscleGroup } from '../src/constants/muscleRegions';
+import { mondayOfWeek } from '../src/utils/date';
 
 let failures = 0;
 function check(name: string, cond: boolean, detail = '') {
@@ -11,7 +12,14 @@ function check(name: string, cond: boolean, detail = '') {
   else { failures++; console.log(`  FAIL  ${name} ${detail}`); }
 }
 
-console.log('=== normalizeMuscleGroup ===');
+console.log('=== mondayOfWeek (Hoy muscle map resets Mon, not a rolling window) ===');
+check('Wednesday -> that week\'s Monday', mondayOfWeek('2026-09-09') === '2026-09-07');
+check('Monday -> itself', mondayOfWeek('2026-09-07') === '2026-09-07');
+check('Sunday -> the Monday that started that week (not a new one)', mondayOfWeek('2026-09-06') === '2026-08-31');
+check('next Monday -> itself, not the prior week', mondayOfWeek('2026-09-14') === '2026-09-14');
+check('year boundary rolls back into December', mondayOfWeek('2026-01-01') === '2025-12-29');
+
+console.log('\n=== normalizeMuscleGroup ===');
 check('exact match', normalizeMuscleGroup('Pecho') === 'Pecho');
 check('accent/case insensitive', normalizeMuscleGroup('bíceps') === 'Biceps');
 check('unknown returns null', normalizeMuscleGroup('Gemelos raros') === null);

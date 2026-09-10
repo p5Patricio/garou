@@ -62,3 +62,13 @@ export function shiftLocalDate(dateStr: string, days: number): string {
   const nd = String(d.getDate()).padStart(2, '0');
   return `${ny}-${nm}-${nd}`;
 }
+
+/**
+ * Returns the Monday on or before `dateStr` — the start of that ISO-style
+ * training week (the routine's own week runs Mon..Sat, Sun is always rest).
+ */
+export function mondayOfWeek(dateStr: string): string {
+  const dow = parseLocalDate(dateStr).getDay(); // 0 = Sun, 1 = Mon, ... 6 = Sat
+  const daysSinceMonday = dow === 0 ? 6 : dow - 1;
+  return shiftLocalDate(dateStr, -daysSinceMonday);
+}

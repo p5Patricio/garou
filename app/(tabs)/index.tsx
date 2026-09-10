@@ -57,7 +57,7 @@ export default function HoyScreen() {
   const router = useRouter();
   const { data, loading } = useDashboard();
   const { days: activityDays } = useActivityCalendar();
-  const { levels: muscleLevels } = useMuscleLoad(7);
+  const { levels: muscleLevels } = useMuscleLoad('week');
   const restTimer = useActiveTimer('rest');
   const cardioTimer = useActiveTimer('cardio');
 
@@ -162,7 +162,7 @@ export default function HoyScreen() {
         </View>
 
         <View style={[styles.muscleCard, { backgroundColor: theme.bg2, borderColor: theme.border, borderRadius: RADII.r3 }]}>
-          <Text style={[styles.muscleCardLabel, { color: theme.text3 }]}>Musculos - ultimos 7 dias</Text>
+          <Text style={[styles.muscleCardLabel, { color: theme.text3 }]}>Musculos - esta semana</Text>
           <View style={styles.muscleCardRow}>
             <BodyMap
               view="front"
